@@ -5,6 +5,8 @@
 - [Chapter 1: Picking a Bug Bounty Program](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-1-picking-a-bug-bounty-program)
 - [Chapter 2: Sustaining Your Success](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-2-sustaining-your-success)
 - [Chapter 3: How the Internet Works]()
+- [Chapter 4: Environmental Setup and Traffic Interception]()
+- [Chapter 5: Web Hacking Reconnaissance]()
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -352,12 +354,18 @@ Pick a program that has assets that play to your strengths, based on your skill 
 
 **The Domain Name System (DNS)**
 
-- Functions as the phone book for the internet by translating domain names into IP addresses.
+- Functions as the phone book for the internet by translating domain names into IP addresses.  
   Example:  
    Browser -- "Where is google.com?" --> DNS server  
    DNS server -- "It's at 216.58.192.132" --> Browser  
    Browser -- "Show me google.com" --> Web Server 216.58.192.132  
    Web Server 216.58.192.132 -- "here you go, google.com" --> Browser
+
+  **Internet Ports**
+
+- You connect to a server through a port which range in number from 0 to 65,535
+- Users connect to a server through a port which is mapped to a specific service
+  - This makes sending and receiving information more efficient as conventions allows for this information to all be processed in the same way
   <pre>
   Example:                  port 80 - HTTP service  
                           /  
@@ -366,10 +374,148 @@ Pick a program that has assets that play to your strengths, based on your skill 
                             port 21 - ftp service  
   </pre>
 
-  **Internet Ports**
+**Requests and Responses**
 
-- You connect to a server through a port which range in number from 0 to 65,535
-- Users connect to a server through a port which is mapped to a specific service
-  - This makes sending and receiving information more efficient as conventions allows for this information to all be processed in the same way
+- HTTP is a set of rules that specifies how to structure and interpret internet messages and how web clients and web servers should exchange info
+- Types of HTTP requests:
+  - GET: Retrieves information from the server
+  - POST: Submits data to the server
+  - OPTIONS: Requests permitted HTTP methods
+  - PUT: Used to update a resource
+  - DELETE: Used to delete a resource
+- Examples of very simple HTTP requests and responses on page 36-37 (simplistic)
 
-\*\* Requests and Responses
+#### **Internet Security Controls**
+
+**Content Encoding**
+
+- Data encoding is not just used to privacy or security, it is also used to prevent data corruption
+- Used to transfer binary data reliably across machines that have limited support for different content types
+- When you transfer data without encoding, data may be screwed up when the internet protocols misinterpret special characters in the message
+- Common Data Encoding methods:
+  - Base64
+  - Hex
+  - URL encoding
+  - Octal encoding
+  - dword encoding
+  - Whenever you see encoded data try to decode it to understand what the website is trying to communicate
+- Tools for encoding/decoding:
+  - Burpsuite
+  - [Cyber Chef](https://gchq.github.io/CyberChef)
+- When servers encrypt their content before transmission, the data between the client and server is secured against intercepts and eavesdropping
+
+**Session Management and HTTP Cookies**
+
+- Session management is the process that allows the server to handle multiple requests from the same user without asking the user to log in again
+- When you log in, the server creates a new session and assigns an associated session ID to your browser that serves as proof of identity
+  - Session ID's are often long and unguessable
+- When you log out, the server ends the session and revokes the session ID. Session ID's may also be ended if you don't manually logout (timeout)
+- Most websites use cookies to communicate session information in HTTP Requests
+  - These cookies are stored in your browser
+- When you log in later, a new session ID is created and sent to your browser
+
+**Token-Based Authentication**
+
+- Token-based authentication systems store your session ID info directly in some sort of token.
+  - Instead of storing your information server-side and querying it using a session ID, tokens allow servers to deduce your identity be decoding the token itself.
+  - This way applications won't have to store and maintain session information server-side
+- **Risk:** If the server uses information contained in the token to determine the user's identity, couldn't users modify the information in the tokens and log in as someone else?
+  - To combat token forgery, applications might encrypt their tokens, or encode the token so that it can be read by only the application itself or other authorized parties
+  - This does not completely eliminate the risk of token forgery. It's harder but attackers can tamper with encrypted tokens without understanding the contents. Encoded tokens can also be decoded to read the contents
+  - Signing tokens is a more reliable way to prevent token tampering as only the system with the secret signing key can generate the signature
+    Example:
+
+1. The user logs in with their credentials.
+2. The server validates those credentials and provides the user with a signed token.
+3. The user sends the token with every request to prove their identity.
+4. Upon receiving and validating the token, the server reads the user's identity information from the token and responds with confidential data.
+
+**JSON Web Tokens**
+
+- JSON web token is one of the most commonly used types of authentication tokens and it has three components:
+  1. A header:
+  - Identifies the algorithm used to generate the signature
+  - It's a base64url-encoded string containing the algorithm name
+  - ex. eyBhbGcgOiBIUzI1NiwgdH1wIDogSldUIH0K
+  - ex. decoded: { "alg" : "HS256", "typ" : "JWT" }
+  2. A payload:
+  - Contains information about the user's identity
+  - It's a base64url-encoded string containing the algorithm name
+  - ex. eyB1c2VyX25hbWUgOiBhZG1pbiB9Cg
+  - ex. decoded: { "user_name" : "admin", },
+  3. A signature
+  - Calculated by concatenating the header with the payload, then signing it with the algorithm specified in the header, and a secret key
+  - ex. 4Hb/6ibbViPOzq9SJflsNGPWSk6B8F6EqVrkNjpXh7M
+  - Created by signing: eyBhbGcgOiBIUzI1NiwgdH1wIDogSldUIH0K.eyB1c2VyX25hbWUgOiBhZG1pbiB9Cg with HS256 algorithm using the secret key
+  - The whole token is made up of each part separated by a period: eyBhbGcgOiBIUzI1NiwgdH1wIDogSldUIH0K.eyB1c2VyX25hbWUgOiBhZG1pbiB9Cg.4Hb/6ibbViPOzq9SJflsNGPWSk6B8F6EqVrkNjpXh7M
+  - If done incorrectly, there are ways to bypass the security mechanism and forge arbitrary Tokens
+
+**Manipulating the alg Field**
+
+- Sometimes applications fail to verify a token's signature after it arrives at the server allowing an attacker to bypass the security mechanism by providing an invalid or blank signature
+- Attackers do this by tampering with the "alg" field of the token header
+  - Applications must restrict the algorithm type used in the JWT to stop attackers from compromising the security of the token through tampering with the "alg" field
+  - If the alg field is able to be set to `none` even tokens with empty signature sections would be considered valid
+  - example:
+    - { "alg" : "none", "typ" : "JWT" } { "user_name" : "admin" }
+    - = eyAiYWxnIiA6ICJub25lIiwgInR5cCIgOiAiSldUIiB9.eyAidXNlcl9uYW1lIiA6ICJhZG1pbiIgKQ.
+- Allowing the alg field to be set to `none` was originally used for debugging, but if left on attackers can bypass security and log in as anyone
+- HMAC and RSA are the most popular signing algorithms
+  - If an RSA algo is being used, and the attacker can switch the "alg" field to HMAC, they might be able to create valid tokens by signing the forged tokens with the RSA public key
+    - When the field is switched to HMAC the token is still verified with the RSA public key, but this time, they token can be signed with the same public key.
+
+**Brute-Forcing the key**
+
+- Attackers have a lot of information to start with: the algorithm used to sign the token, the payload that was signed, and the resulting signature
+- If the key used to sign the token is not complex enough, it might be possible to brute-force it
+- If another vulnerability exists (Directory Traversal, external entity attack (XXE), or server side request forgery (SSRF)) that allows the attacker to read the file where the key value is stored, the attacker can steal the key and sign arbitrary tokens of their choosing
+
+**Reading Sensitive Information**
+
+- JWT's often contain sensitive user information, if they aren't encrypted attackers can decode them to access sensative user information
+- Properly implemented signature sections provide data integrity, not confidentiality
+- Search JWT security issues or vulnerabilities for more examples
+
+**The Same-Origin Policy**
+
+- Same-Origin Policy (SOP) is a rule that restricts how a script from one origin can interact with the resources of a different origin.
+  - A script from page A can access data from page B only if the pages are of the same origin
+  - This rule protects modern web applications and prevents many common web vulnerabilities
+- Two URLs are said to have the same origin if they share the same protocol, hostname, and port number
+
+**Learn to program**
+
+- Learning python or bash can help you automate repetitive tasks and safe lots of time
+- Learning to read JavaScript can help you find hidden endpoints that may be vulnerable
+- Recommended books:
+  - _Learn Python the Hard Way_ by Zed Shaw
+  - _Eloquent JavaScript, Third Edition_ by Marijn Haverbeke
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Environmental Setup and Traffic Interception
+
+Setup section is very basic and only necessary if you've never used BurpSuite and don't have a setup for pen testing already
+
+**A Final Note on... Taking Notes**
+
+- Stay organized
+- Keep track of what you've tested and what you've yet to test (regardless of success)
+  - Don't waste your time accidentally testing the same things
+- Record details about each vulnerability:
+  - theoretical concept, potential impact, exploitation steps, and sample proof-of-concept code
+- Possible note taking tech:
+  - Obsidian (Mark down, brain mapping)
+  - XMind (mind mapping tool)
+  - \*CherryTree (hierarchical note taking, good for searching through your notes and building large note bases)
+  - \*NeoVim (Cuz why not? I use it for everything else)
+- Note taking tips:
+  - Take notes about any weird behaviors, new features, misconfigurations, minor bugs, and suspicious endpoints to keep track of potential vulnerabilities
+  - Take notes to keep track of your hacking progress, the features you've tested, and those you stil have to check
+  - Take notes while you learn: jot down information about each vulnerability you learn about, like its theoretical concept, potential impact, exploitation steps, and sample POC code.
+  - Keep you notes organized from the get-go, so you can find them when you need to!
+  - Find a note-taking and organization process that works for you, You can try out note-taking tools like Sublime Text, Obsidian, and XMind to find a tool that you prefer.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Web Hacking Reconnaissance
