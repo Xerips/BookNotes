@@ -2,8 +2,9 @@
 
 ## Table of Contents
 
-- Chapter 1: Picking a Bug Bounty Program
-- Chapter 2: Sustaining Your Success
+- [Chapter 1: Picking a Bug Bounty Program](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-1-picking-a-bug-bounty-program)
+- [Chapter 2: Sustaining Your Success](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-2-sustaining-your-success)
+- [Chapter 3: How the Internet Works]()
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -204,7 +205,7 @@ Pick a program that has assets that play to your strengths, based on your skill 
     - Are they respectful and supportive?
     - Do they help you learn?
 
-[Back to TOC]()
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
 ### Chapter 2: Sustaining Your Success
 
@@ -245,14 +246,14 @@ Pick a program that has assets that play to your strengths, based on your skill 
 4. Give Clear Steps to Reproduce
 
 - Bad Example:
-  `1. Login to the site and visit https://example.com/change_password
 
+1. Login to the site and visit https://example.com/change_password
 2. Click the Change Password button
-3. Intercept the request, and change the user_id parameter to another user's ID.`
+3. Intercept the request, and change the user_id parameter to another user's ID.
 
 - Better Example:
-  `1. Make two accounts on example.com: account A and account B.
 
+1. Make two accounts on example.com: account A and account B.
 2. Log in to example.com as account A, and visit https://example.comd/change_password
 3. Fill in the desired new password in the new password field, located at the top left of the page.
 4. Click the Change Password button located at the top right of the page
@@ -324,7 +325,6 @@ Pick a program that has assets that play to your strengths, based on your skill 
 #### **What to Do When You're Stuck**
 
 1. Take a Break!
-
 2. Build Your Skill Set
 
 - [OWASP](https://owasp.org/www-project-web-security-testing-guide) has testing guides that can help you build your skills towards what's most common
@@ -335,4 +335,40 @@ Pick a program that has assets that play to your strengths, based on your skill 
 - Diversify your targets to break up the monotony
 - Look for specific things, when whose don't work, look for other specific things
 
-[Back to TOC]()
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### How the Internet Works
+
+**The Client-Server Model**
+
+- The internet is composed of two kinds of devices: Clients and Servers.
+  - Clients request resources
+  - Servers provide resources
+- Web servers provide:
+  - HTML files to your browser to display information
+  - CSS files to make that display information pretty
+  - JavaScript to which enables animation, reacts to use input, resizing of of images as you scroll, validation of user input on the client side all before interacting with the server. JavaScript can also display images and videos
+  - Web APIs enable applications to request the data of other systems
+
+**The Domain Name System (DNS)**
+
+- Functions as the phone book for the internet by translating domain names into IP addresses.
+  Example:  
+  Browser -- "Where is google.com?" --> DNS server  
+  DNS server -- "It's at 216.58.192.132" --> Browser  
+  Browser -- "Show me google.com" --> Web Server 216.58.192.132  
+  Web Server 216.58.192.132 -- "here you go, google.com" --> Browser
+
+Example: port 80 - HTTP service  
+ /  
+browser --> web server -- port 25 - Email service  
+ \  
+ port 21 - ftp service
+
+**Internet Ports**
+
+- You connect to a server through a port which range in number from 0 to 65,535
+- Users connect to a server through a port which is mapped to a specific service
+  - This makes sending and receiving information more efficient as conventions allows for this information to all be processed in the same way
+
+\*\* Requests and Responses
