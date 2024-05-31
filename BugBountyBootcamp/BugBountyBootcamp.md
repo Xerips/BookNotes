@@ -354,18 +354,19 @@ Pick a program that has assets that play to your strengths, based on your skill 
 
 - Functions as the phone book for the internet by translating domain names into IP addresses.
   Example:  
-  Browser -- "Where is google.com?" --> DNS server  
-  DNS server -- "It's at 216.58.192.132" --> Browser  
-  Browser -- "Show me google.com" --> Web Server 216.58.192.132  
-  Web Server 216.58.192.132 -- "here you go, google.com" --> Browser
+   Browser -- "Where is google.com?" --> DNS server  
+   DNS server -- "It's at 216.58.192.132" --> Browser  
+   Browser -- "Show me google.com" --> Web Server 216.58.192.132  
+   Web Server 216.58.192.132 -- "here you go, google.com" --> Browser
+  <pre>
+  Example:                  port 80 - HTTP service  
+                          /  
+  browser --> web server -- port 25 - Email service  
+                          \  
+                            port 21 - ftp service  
+  </pre>
 
-Example: port 80 - HTTP service  
- /  
-browser --> web server -- port 25 - Email service  
- \  
- port 21 - ftp service
-
-**Internet Ports**
+  **Internet Ports**
 
 - You connect to a server through a port which range in number from 0 to 65,535
 - Users connect to a server through a port which is mapped to a specific service
