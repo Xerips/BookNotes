@@ -721,4 +721,8 @@ Usage:
 - Pay attention to dependencies and imports being used and go through the versions list to see if they're outdated.
 - Search for publicly disclosed vulnerabilities that would work on your target based on these outdated dependencies and imports.
 
+Tools:  
+- [Gitrob](https://github.com/michenriksen/gitrob/): locates potentially sensitive files pushed to public repositories on Github.
+- [TruffleHog](https://github.com/trufflesecurity/truffleHog/): specializes in finding secrets in repositories by conducting regex searches and scanning for high-entropy strings.
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)

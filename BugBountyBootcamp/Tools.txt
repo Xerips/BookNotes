@@ -27,3 +27,5 @@ Bucket Stream
 awscli
 GitHub
 KeyHacks
+Gitrob
+TruffleGod
