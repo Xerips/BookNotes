@@ -28,4 +28,11 @@ awscli
 GitHub
 KeyHacks
 Gitrob
-TruffleGod
+TruffleHog
+PasteHunter
+Wappalyzer
+BuiltWith
+StackShare
+Retire.js
+jq
+
