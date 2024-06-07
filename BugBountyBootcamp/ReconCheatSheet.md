@@ -1,6 +1,13 @@
 # Recon Cheat Sheet
 
-**Google Dorking**
+- [Google Dorking]()
+- [Whois]()
+- [IP Addresses]()
+- [Certificate Parsing]()
+
+
+
+### **Google Dorking**
 - Advanced google searches are a powerful technique to find the resources you need quickly and accurately.
 - Can be used for recon or finding POCs, Payloads, etc.
 - Can be used for finding hidden admin portals, unlocked password files, and leaked authentication keys.
@@ -58,3 +65,12 @@
 
 [Google Hacking Database](https://www.exploit-db.com/google-hacking-database/) contains many search queries that could be helpful including queries that look for files containing passwords, common URLs of admin portals, pages build using vulnerable software.
 **If you're sending a lot of search queries, Google will start requiring CAPTCHA challenges for visitors from your network. Don't slow down everone else using google on your network, use a VPN/VPS to a different network if you think this may happen.**
+
+### Whois | Reverse Whois
+
+Whois: `whois example.com`
+Reverse Whois: [ViewDNS.info](https://viewdns.info/reversewhois/)
+
+### IP Addresses
+
+

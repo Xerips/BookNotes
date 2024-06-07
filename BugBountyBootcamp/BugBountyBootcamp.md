@@ -8,6 +8,7 @@
 - [Chapter 4: Environmental Setup and Traffic Interception](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#environmental-setup-and-traffic-interception)
 - [Chapter 5: Web Hacking Reconnaissance](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#web-hacking-reconnaissance)
   - [Google Dorking]()
+  - [Scope Discovery]()
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -590,6 +591,134 @@ Always verify the target's scope which specifies which subdomains, products, and
 If dev.example.com and test.example.com are out of scope, manually test around them, or exclude them when using tools that might touch these subdomains.  
 
 **WHOIS and Reverse WHOIS**
+Use whois to obtain information like: mailing address, phone number, email address, names, etc.  
+- ex.: whois facebook.com
+For companies using *domain privacy* you can use a reverse whois for finding more obscure information or internal domains.  
+- Use ViewDNS.info (or another public tool) for reverse whois
+Between whois and reverse whois you'll have a good set of top-level domains to work with.
 
+**IP Addresses**
+- Use nslookup to find the IP address associated with a domain.
+  - `$ nslookup facebook.com`
+- Use whois with the IP and look for the NetRange to see what range of IP addresses (range) belong to the target. If they have a range, all IP addressed within that range belong to the target.
+-  You can compare Autonomous System Numbers (ASNs) to see if multiple IPs belong to the same owner as well.
+  - ex.:
+  - `whois -h whois.cymru.com 157.240.2.20`
+    AS    | IP             | AS Name  
+    32934 | 157.240.2.20   | FACEBOOK, US  
+  - `whois -h whois.cymru.com 157.240.2.27`
+    AS    | IP             | AS Name  
+    32934 | 157.240.2.27   | FACEBOOK, US  
+- The -h flag in the whois command sets the WHOIS server to retrieve information from, and whois.cymru.com is a database that translates IPs to ASNs. If the company has a dedicated IP range, and doesn't mark those addresses as out of scope, you could plan to attack every IP in that range.
+
+**Certificate Parsing**
+- An SSL certificate's Subject Alternative Name field allows cert owners to specify additional hostnames that use the same certificate. You can find those hostnames by parsing this field.
+- Online Databases: crt.sh, Cert Spotter, Censys
+- crt.sh can send information in JSON format, rather than HTML, for easier parsing.
+  - For JSON, you can change the request to `curl https://crt.sh/?q=facebook.com&output=json`
+
+**Subdomain Enumeration**
+Tools:  
+- Sublist3r: Works by querying search engines and online subdomain databases.
+- SubBrute: Brute-forcing tool that guesses possible subdomains until it finds ones that exist.
+- Amass: Uses a combination of DNS zone transfers, certificate parsing, search engines, and subdomain databases.
+- Gobuster: Another brute-forcing and fuzzing tool.
+- [Altdns](https://github.com/infosec-au/altdns/): Automates the process of discovering subdomains with names that are permutations of other subdomains.
+Wordlists:  
+- Daniel Miessler's [SecLists](https://github.com/danielmiessler/SecLists/) - Gotta have it, it's extensive and well organized.
+- Word list Generation: 
+  - [Commonspeak2](https://github.com/assetnote/commonspeak2/)
+  - [CeWL](https://github.com/digininja/CeWL)
+Tips, Tricks, Usages:  
+- Use `sort -u wordlist1.txt wordlist2.txt -o hybridlist.txt` to remove duplicate entries in 2 wordlists.
+- Gobuster subdomain brute-forcing: `gobuster dns -d target_domain -w wordlist`
+- Use knowledge of the target to check for possible subdomains.
+  - ex.: you know example.com uses jenkins, check jenkins.example.com to see if it's a valid subdomain.
+- look for subdomains of subdomains: found dev.example.com, try also for 1.dev.example.com, etc.
+  - recursively check for subdomains by brute forcing your found domains (again and again until no returns).
+
+**Service Enumeration**
+Tools:  
+- nmap: Active Scanning
+- masscan: Active Scanning
+- Shodan: Passive Scanning
+- Censys: Passive Scanning
+- Projects Sonar: Passive Scanning
+
+- Active scanning is where your system directly interacts with the target system to check if certain ports are open. Can be seen and you could have your IP address blocked, or logged, etc.  
+- Passive Scanning is where you use a 3rd party to scan the target. This is a way to get information without touching the target.
+- The book doesn't go into it (at least in this chapter), but nmap and masscan have a huge amount of functionality. Take a look at the documentation, tutorials, etc. to help build your own commands to create custom enumeration commands for different targets/scenarios.
+
+**Directory Brute-Forcing**
+- dirsearch example:
+  - `dirsearch -u scanme.nmap.org -e php`
+  - -u is the flag for the url you're dir busting, -e is the file extensions you're looking for. You can run it with multiple file extensions.
+- gobuster example:
+  - `gobuster dir -u target_url -w wordlist`
+  - dir to specify directory busting (in contracts to the earlier dns), -u to specify the target url, -w to pass the wordlist.
+Tips and Tricks:  
+- Use a screenshot tool like [EyeWitness](https://github.com/FortyNorthSecurity/EyeWitness/) or [Snapper](https://github.comdxa4481/Snapper) to automatically verify that a page is hosted on each location
+- EyeWitness accepts a list of URLs and takes screenshots of each page. Quickly cycle through images in an image gallery app to see if anything looks interesting.
+  - Look for: Developer or Admin panels, directory listing pages, analytics pages, and pages that look outdated and ill-maintained.
+
+**Spidering the Site**
+- A web spider tool visits a page, then identifies all the URLs embedded on the page and visits them, then repeats the process.
+  - This can uncover hidden endpoints in an application.
+Tools:  
+- OWASP Zed Attack Proxy (ZAP): Book recommends ZAP for spidering over BurpSuite. Pg. 72 for examples.
+- BurpSuite: Uses the "crawler" function to perform spidering/web crawling
+
+**Third-Party Hosting**
+- Take a look at the targets third-party hosting footprint.
+- Look for S3 buckets (AWS) which stands for Simple Storage Service
+  - S3 buckets can contain hidden endpoints, logs, credentials, user information, source code, and other information that might be useful.
+- Use Google Dorking
+  - `site:s3.amazonaws.com COMPANY_NAME` and
+  - `site:amazonaws.com COMPANY_NAME`
+  - Naming convention: BUCKET.s3.amazonawes.com or s3.amazonaws.com/BUCKET
+  - For targets with custom URLs for S3 buckets:
+    - `amazonaws s3 COMPANY_NAME`
+    - `amazonaws bucket COMPANY_NAME`
+    - `amazonaws COMPANY_NAME`
+    - `s3 COMPANY_NAME`
+- You can use [GreyhatWarfare](https://buckets.grayhatwarfare.com) to search publicly exposed S3 buckets using a keyword.
+  - Supply keywords related to your target, such as the application, project, or organization name, to find relevant buckets.
+- [Lazys3](https://github.com/nahamsec/lazys3/) is a tool that helps to bruteforce S3 buckets using a wordlist to guess permutations of common bucket names.
+- [Bucket Stream](https://github.com/eth0izzle/bucket-stream/) parses certificates belonging to an organization and finds S3 buckets based on permutations of the domain names found on the certificates. Bucket Stream also checks whether the bucket is accessible to save you time.
+
+- You'll need to install awscli to interact with buckets you've found: `pip install awscli`  
+- Configuration documentation can be found at https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html.  
+
+Usage:  
+- list the contents of a bucket you've found with:
+  - `aws s3 ls s3://BUCKET_NAME/`
+- Copy files to your local machine:
+  - `aws s3 cp s3://BUCKET_NAME/FILE_NAME/path/to/local/directory`
+- Look for anything valuable such as active API keys, personal information, passwords, etc. Report these right away.
+  - Exposed s3 buckets alone are often considered vulnerabilities.
+- Copy a local file to the targets s3 bucket:
+  - `aws s3 cp TEST_FILE s3://BUCKET_NAME/TEST_FILE`
+- Remove the TEST_FILE with:
+  - `aws s3 rm s3://BUCKET_NAME/TEST_FILE`
+- If you can mess with the contents of an s3 bucket, you may be able to change the web application's operations or corrupt data.
+- It's best to upload a "I Wuz Here" file and remove it to prove you have access, tampering with company files may result in costly lawsuits.
+
+**GitHub Recon**
+- Find the github user names associated with your target by searching the organizations name or product names or by checking the github accounts of known employees
+- Find repositories related to the projects you're testing and record them, along with the usernames of the organization's top contributors, which can help you find more relevant repositories.
+- Look through the Issues and Comments sections for potential info leaks, unresolved bugs, problematic code, and the most recent code fixes and security patches.
+  - New patches are more likely to contain bugs
+- Look at any protection mechanisms implemented to see if you can bypass them.
+- Once you've found a interesting file, check the Blame and History sections at the top-right  corner of the file's page to see how it was developed
+- Look for hardcoded secrets like API keys, encryption keys, database passwords
+- Use [Key Hacks](https://github.com/streaak/keyhacks/) to check if the creds are valid and learn how to use them to access the target's services
+- Look for functions that deal with authentication, password reset, state-changing actions, or private info reads.
+- Pay attention to code that deals with user input, database entries, file reads, and file uploads.
+- Look for configuration files to gather more information about their infrastructure
+- Look for old endpoints and S3 bucket URLs that you can attack.
+
+- Outdated dependencies and the unchecked use of dangerous functions are also a huge source of bugs.
+- Pay attention to dependencies and imports being used and go through the versions list to see if they're outdated.
+- Search for publicly disclosed vulnerabilities that would work on your target based on these outdated dependencies and imports.
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
