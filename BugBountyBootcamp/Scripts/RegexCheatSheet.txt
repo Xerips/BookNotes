@@ -1,0 +1,29 @@
+
+ Ex.:
+ - nmap grep command to simplify results to only PORT STATE SERVICE:
+  - `grep -E "^\S+\s+\S+\s+\S+$" DIRECTORY/nmap > DIRECTORY/nmap_cleaned`
+  - -E tells grep you're using a regex
+
+Operators:
+- regex consist of two parts: constants and operators.
+- Constants are sets of strings, operators are symbols that perform operations on the strings.
+- Regex operators that represent characters:
+- \d matches any digit.
+- \w matches any character.
+- \s matches any whitespace.
+- \S matches any non-whitespace.
+- . matches with any single character.
+- \ escapes a special character.
+- ^ matches the start of the string or line.
+- $ matches the end of the string or line.
+- \* matches the preceding character zero or more times.
+- \+ matches the preceding character one or more times.
+- {3} matches the preceding character three times.
+- {1, 3} matches the preceding character one to three times.
+- {1, } matches the preceding chracter one or more times.
+- [abc] matches one of the characters within the brackets.
+- [a-z] matches one of the characters within the range of a to z.
+- (a|b|c) matches either a or b or c.
+- Using this info, we can understand that our regex "^\S+\s+\S+\s+\S+$" means we should extract lines with 3 strings separated by 2 white spaces.
+- You can tell because we have 3 S (none-whitespaces = strings) and 2 s (whitespaces).
+- For regex syntax check out [RexEgg's cheat sheet](https://www.rexegg.com/regex-quickstart.html)
