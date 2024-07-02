@@ -7,9 +7,9 @@
 - [Chapter 3: How the Internet Works](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-3-how-the-internet-works)
 - [Chapter 4: Environmental Setup and Traffic Interception](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#environmental-setup-and-traffic-interception)
 - [Chapter 5: Web Hacking Reconnaissance](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance)
-  - [Google Dorking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#google-dorking)
-  - [Scope Discovery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#scope-discovery)
-  - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#writing-your-own-recon-scripts)
+  - [Google Dorking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#google-dorking)
+  - [Scope Discovery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#scope-discovery)
+  - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#writing-your-own-recon-scripts)
 - [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#)
 
 ### Chapter 1: Picking a Bug Bounty Program
