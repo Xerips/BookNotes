@@ -523,61 +523,65 @@ The setup section is very basic and only necessary if you've never used BurpSuit
 ### Web Hacking Reconnaissance
 
 **Manually Walking Through the Target**
+
 - Try to use every function the website has to offer: payments, events, create different users with different privileges, click all the links and see where they go, etc.
-- You're exploring the attack surface 
+- You're exploring the attack surface
 
 #### **Google Dorking**
+
 - Advanced google searches are a powerful technique to find the resources you need quickly and accurately.
 - Can be used for recon or finding POCs, Payloads, etc.
 - Can be used for finding hidden admin portals, unlocked password files, and leaked authentication keys.
 
 **Google Dorking Operators:**
-- ***site***:
+
+- **_site_**:
   - Tells Google to show you results from a certain site only.
   - ex.: to show results for print() only from python.org
-    - print() site:python.org 
-- ***inurl***:
+    - print() site:python.org
+- **_inurl_**:
+
   - Searches for pages with a URL that match the search string.
   - ex.: You've just learned that "/course/jumpto.php" could indicate that a site is vulnerable to RCE.
     - You can then search: inurl:"/course/jumpto.php" site:example.com
   - ex.: Search for possibly vulnerable endpoints like a Kibana dashboard:
-    - site:example.com inurl:app/kibana 
+    - site:example.com inurl:app/kibana
 
-- ***intitle***:
+- **_intitle_**:
   - Finds specific strings in a page's title.
   - ex.: You want to search for file-listing pages on a web server and know that they often have "index of" in their titles.
     - intitle:"index of" site:example.com
-- ***link***:
+- **_link_**:
   - Searches for web pages that contain links to a specified URL.
   - ex.: You're researching the common regular expression denial-of-service (ReDos) vulnerability. You can easily pull up its definition but might have a hard time finding examples. The link operator can discover pages that reference the vulnerability's Wikipedia page to find discussions on the topic
     - link:"https://en.wikipedia.org/wiki/ReDos"
-- ***filetype***
+- **_filetype_**
   - Searches for pages with a specific file extension. Use it to find files with extensions like .log, .php, .pwd, etc.
     - filetype:log site:example.com
-- ***Wildcard(\*)***
+- **_Wildcard(\*)_**
   - Used to indicate "Any character or series of characters."
   - ex.: Replace a word in a search to find all possible matches that could replace that word.
-    - "How to hack * using Google"
-    - This will result in results like: "How to hack *websites* using Google," "How to hack web apps using Google," "How to hack (ext.) using Google."
+    - "How to hack \* using Google"
+    - This will result in results like: "How to hack _websites_ using Google," "How to hack web apps using Google," "How to hack (ext.) using Google."
   - ex. Search for all of a targets sub domains:
-    - site:*.example.com
-- ***Quotes (" ")***
+    - site:\*.example.com
+- **_Quotes (" ")_**
   - Adding quotations around your search terms forces an exact match.
   - ex.: Force searches to contain all the words "How to hack," by putting them in quotes.
     - This will not guarantee that the words will be in the order of your quoted text.
-- ***Or (|)***
+- **_Or (|)_**
   - Pipe character = "or"
   - | must be surrounded by spaces
   - ex.: Search for "how to hack" on two different sites:
     - "how to hack" site:(reddit.com | stackoverflow.com)
   - ex.: Search for results containing either SQLi or SQL injection:
     - (SQLi | SQL injection)
-- ***Minus (-)***
+- **_Minus (-)_**
   - Used to exclude search results
   - ex.: You want to search "how to hack" but exclude php hacking:
     - "how to hack websites" -php
-- ***ext***
-  - similar to filetype, but will look specifically for file extensions (not file types) like .php, .cfm, .asp, .jsp, .pl 
+- **_ext_**
+  - similar to filetype, but will look specifically for file extensions (not file types) like .php, .cfm, .asp, .jsp, .pl
   - ex.:
     - site:example.com ext:php
     - site:example.com ext:txt password
@@ -590,48 +594,52 @@ The setup section is very basic and only necessary if you've never used BurpSuit
 #### Scope Discovery
 
 Always verify the target's scope which specifies which subdomains, products, and applications you're allowed to attack.  
-If dev.example.com and test.example.com are out of scope, manually test around them, or exclude them when using tools that might touch these subdomains.  
+If dev.example.com and test.example.com are out of scope, manually test around them, or exclude them when using tools that might touch these subdomains.
 
 **WHOIS and Reverse WHOIS**
-Use whois to obtain information like: mailing address, phone number, email address, names, etc.  
+Use whois to obtain information like: mailing address, phone number, email address, names, etc.
+
 - ex.: whois facebook.com
-For companies using *domain privacy* you can use a reverse whois for finding more obscure information or internal domains.  
+  For companies using _domain privacy_ you can use a reverse whois for finding more obscure information or internal domains.
 - Use ViewDNS.info (or another public tool) for reverse whois
-Between whois and reverse whois you'll have a good set of top-level domains to work with.
+  Between whois and reverse whois you'll have a good set of top-level domains to work with.
 
 **IP Addresses**
+
 - Use nslookup to find the IP address associated with a domain.
   - `$ nslookup facebook.com`
 - Use whois with the IP and look for the NetRange to see what range of IP addresses (range) belong to the target. If they have a range, all IP addressed within that range belong to the target.
--  You can compare Autonomous System Numbers (ASNs) to see if multiple IPs belong to the same owner as well.
-  - ex.:
-  - `whois -h whois.cymru.com 157.240.2.20`
-    AS    | IP             | AS Name  
-    32934 | 157.240.2.20   | FACEBOOK, US  
-  - `whois -h whois.cymru.com 157.240.2.27`
-    AS    | IP             | AS Name  
-    32934 | 157.240.2.27   | FACEBOOK, US  
+- You can compare Autonomous System Numbers (ASNs) to see if multiple IPs belong to the same owner as well.
+- ex.:
+- `whois -h whois.cymru.com 157.240.2.20`
+  AS | IP | AS Name  
+  32934 | 157.240.2.20 | FACEBOOK, US
+- `whois -h whois.cymru.com 157.240.2.27`
+  AS | IP | AS Name  
+  32934 | 157.240.2.27 | FACEBOOK, US
 - The -h flag in the whois command sets the WHOIS server to retrieve information from, and whois.cymru.com is a database that translates IPs to ASNs. If the company has a dedicated IP range, and doesn't mark those addresses as out of scope, you could plan to attack every IP in that range.
 
 **Certificate Parsing**
+
 - An SSL certificate's Subject Alternative Name field allows cert owners to specify additional hostnames that use the same certificate. You can find those hostnames by parsing this field.
 - Online Databases: crt.sh, Cert Spotter, Censys
 - crt.sh can send information in JSON format, rather than HTML, for easier parsing.
   - For JSON, you can change the request to `curl https://crt.sh/?q=facebook.com&output=json`
 
 **Subdomain Enumeration**
-Tools:  
+Tools:
+
 - Sublist3r: Works by querying search engines and online subdomain databases.
 - SubBrute: Brute-forcing tool that guesses possible subdomains until it finds ones that exist.
 - Amass: Uses a combination of DNS zone transfers, certificate parsing, search engines, and subdomain databases.
 - Gobuster: Another brute-forcing and fuzzing tool.
 - [Altdns](https://github.com/infosec-au/altdns/): Automates the process of discovering subdomains with names that are permutations of other subdomains.
-Wordlists:  
+  Wordlists:
 - Daniel Miessler's [SecLists](https://github.com/danielmiessler/SecLists/) - Gotta have it, it's extensive and well organized.
-- Word list Generation: 
+- Word list Generation:
   - [Commonspeak2](https://github.com/assetnote/commonspeak2/)
   - [CeWL](https://github.com/digininja/CeWL)
-Tips, Tricks, Usages:  
+    Tips, Tricks, Usages:
 - Use `sort -u wordlist1.txt wordlist2.txt -o hybridlist.txt` to remove duplicate entries in 2 wordlists.
 - Gobuster subdomain brute-forcing: `gobuster dns -d target_domain -w wordlist`
 - Use knowledge of the target to check for possible subdomains.
@@ -640,37 +648,41 @@ Tips, Tricks, Usages:
   - recursively check for subdomains by brute forcing your found domains (again and again until no returns).
 
 **Service Enumeration**
-Tools:  
+Tools:
+
 - nmap: Active Scanning
 - masscan: Active Scanning
 - Shodan: Passive Scanning
 - Censys: Passive Scanning
 - Projects Sonar: Passive Scanning
 
-- Active scanning is where your system directly interacts with the target system to check if certain ports are open. Can be seen and you could have your IP address blocked, or logged, etc.  
+- Active scanning is where your system directly interacts with the target system to check if certain ports are open. Can be seen and you could have your IP address blocked, or logged, etc.
 - Passive Scanning is where you use a 3rd party to scan the target. This is a way to get information without touching the target.
 - The book doesn't go into it (at least in this chapter), but nmap and masscan have a huge amount of functionality. Take a look at the documentation, tutorials, etc. to help build your own commands to create custom enumeration commands for different targets/scenarios.
 
 **Directory Brute-Forcing**
+
 - dirsearch example:
   - `dirsearch -u scanme.nmap.org -e php`
   - -u is the flag for the url you're dir busting, -e is the file extensions you're looking for. You can run it with multiple file extensions.
 - gobuster example:
   - `gobuster dir -u target_url -w wordlist`
   - dir to specify directory busting (in contracts to the earlier dns), -u to specify the target url, -w to pass the wordlist.
-Tips and Tricks:  
+    Tips and Tricks:
 - Use a screenshot tool like [EyeWitness](https://github.com/FortyNorthSecurity/EyeWitness/) or [Snapper](https://github.comdxa4481/Snapper) to automatically verify that a page is hosted on each location
 - EyeWitness accepts a list of URLs and takes screenshots of each page. Quickly cycle through images in an image gallery app to see if anything looks interesting.
   - Look for: Developer or Admin panels, directory listing pages, analytics pages, and pages that look outdated and ill-maintained.
 
 **Spidering the Site**
+
 - A web spider tool visits a page, then identifies all the URLs embedded on the page and visits them, then repeats the process.
   - This can uncover hidden endpoints in an application.
-Tools:  
+    Tools:
 - OWASP Zed Attack Proxy (ZAP): Book recommends ZAP for spidering over BurpSuite. Pg. 72 for examples.
 - BurpSuite: Uses the "crawler" function to perform spidering/web crawling
 
 **Third-Party Hosting**
+
 - Take a look at the targets third-party hosting footprint.
 - Look for S3 buckets (AWS) which stands for Simple Storage Service
   - S3 buckets can contain hidden endpoints, logs, credentials, user information, source code, and other information that might be useful.
@@ -688,10 +700,11 @@ Tools:
 - [Lazys3](https://github.com/nahamsec/lazys3/) is a tool that helps to bruteforce S3 buckets using a wordlist to guess permutations of common bucket names.
 - [Bucket Stream](https://github.com/eth0izzle/bucket-stream/) parses certificates belonging to an organization and finds S3 buckets based on permutations of the domain names found on the certificates. Bucket Stream also checks whether the bucket is accessible to save you time.
 
-- You'll need to install awscli to interact with buckets you've found: `pip install awscli`  
-- Configuration documentation can be found at https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html.  
+- You'll need to install awscli to interact with buckets you've found: `pip install awscli`
+- Configuration documentation can be found at https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html.
 
-Usage:  
+Usage:
+
 - list the contents of a bucket you've found with:
   - `aws s3 ls s3://BUCKET_NAME/`
 - Copy files to your local machine:
@@ -706,12 +719,13 @@ Usage:
 - It's best to upload a "I Wuz Here" file and remove it to prove you have access, tampering with company files may result in costly lawsuits.
 
 **GitHub Recon**
+
 - Find the github user names associated with your target by searching the organizations name or product names or by checking the github accounts of known employees
 - Find repositories related to the projects you're testing and record them, along with the usernames of the organization's top contributors, which can help you find more relevant repositories.
 - Look through the Issues and Comments sections for potential info leaks, unresolved bugs, problematic code, and the most recent code fixes and security patches.
   - New patches are more likely to contain bugs
 - Look at any protection mechanisms implemented to see if you can bypass them.
-- Once you've found a interesting file, check the Blame and History sections at the top-right  corner of the file's page to see how it was developed
+- Once you've found a interesting file, check the Blame and History sections at the top-right corner of the file's page to see how it was developed
 - Look for hardcoded secrets like API keys, encryption keys, database passwords
 - Use [Key Hacks](https://github.com/streaak/keyhacks/) to check if the creds are valid and learn how to use them to access the target's services
 - Look for functions that deal with authentication, password reset, state-changing actions, or private info reads.
@@ -723,11 +737,13 @@ Usage:
 - Pay attention to dependencies and imports being used and go through the versions list to see if they're outdated.
 - Search for publicly disclosed vulnerabilities that would work on your target based on these outdated dependencies and imports.
 
-Tools:  
+Tools:
+
 - [Gitrob](https://github.com/michenriksen/gitrob/): locates potentially sensitive files pushed to public repositories on Github.
 - [TruffleHog](https://github.com/trufflesecurity/truffleHog/): specializes in finding secrets in repositories by conducting regex searches and scanning for high-entropy strings.
 
 **Other Sneaky OSINT Techniques**
+
 - Lookup engineer positions at the target Company
   - look for what tech is required as this will give you an idea of what tech is used by the company
 - Can look for known employees github accounts, stackoverflow and Quora posts for insites into bugs/tech stack/etc.
@@ -741,6 +757,7 @@ Tools:
   - [Waybackurls](https://github.com/tomnomnom/waybackurls/) to automatically extract end points and URLs from the Wayback machine.
 
 **Tech Stack Fingerprinting**
+
 - Use nmap with the -sV flag to perform version detection
 - Send an HTTP request via burp or zap to check the HTTP headers for tech stack information
 - Check the HTML source code for clues (search with CTRL+f for specifics)
@@ -758,14 +775,17 @@ Tools:
   - PROGRAM >> FILE_NAME
     - Appends the ouput to FILE_NAME
   - PROGRAM < FILE_NAME
-    - Reads a file into PROGRAM 
+    - Reads a file into PROGRAM
   - PROGRAM1 | PROGRAM2
     - Uses output from PROGRAM1 as input for PROGRAM2
 
 **Understanding Bash Scripting Basics**
-See [Scripts/]()
+See [Scripts/recon.sh](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/recon.sh).
+
+- I've but together one file that has multiple iterations of the examples found in the book. Each individual script starts with a description and a shebang (`!#/bin/bash`) so that you can easily separate them.
 
 **Parsing the Results**
+
 - nmap grep command to simplify results to only PORT STATE SERVICE:
   - `grep -E "^\S+\s+\S+\s+\S+$" DIRECTORY/nmap > DIRECTORY/nmap_cleaned`
   - -E tells grep you're using a regex
@@ -794,5 +814,175 @@ See [Scripts/]()
 
 **Building a Master Report**
 
+- Parse JSON files from crt.sh with jq using: `jq -r ".[] | .name_value" $DOMAIN/crt`
+  - The "-r" flag tells jq to write the output to standard output rather than formatting it as JSON strings.
+  - The .[] iterates through the array within the JSON file.
+  - .name_value extracts the name_value field of each item.
+  - $DOMAIN/crt is the input file to the jq command.
+  - learn more about [jq](https://stedolan.github.io/jq/manual/)
+- Combine all output files into a master report with [this script]().
+
+**Scanning Multiple Domains**
+
+- We use the getopts tool to parse options from the command line by using single character flags.
+- To implement multi-domain scanning functionality, we can assign the -m flag to specify the scan mode and assume that all other arguments are domains.
+  - Tell `getopts` to recognize an option if the option flag -m is used and that this option should contain an input value.
+  - The getopts tool automatically stores the value of any options in the $OPTARG variable.
+  - We can store that value in the variable `MODE`.
+    - `getopts "m:" OPTION`
+      `MODE=$OPTARG`
+  - getopts stop parsing arguments when it encounters an argument that doesn't start with a - character.
+    - Because of this, you'll need to place the scan mode before the domain arguments when running the script.
+    - ex. `.recon.sh -m nmap-only facebook.com fbcdn.net`
+- We need to use a loop to iterate through our domains.
+  - When you know how many values you will be looping through, use a for loop.
+  - When you dont know how many value you will be looping through, use a while loop.
+- Bash for loop syntax:
+  - `for i in LIST_OF_VALUES
+do
+  DO SOMETHING
+done`
+- Implementing the functionality:
+
+  - ````for i in "${@:$OPTIND:$#}"
+    do
+      # Do the scans for $i
+    done```
+    ````
+  - "${@:$OPTIND:$#}" is an array that contains every command line argument, besides the ones that are already parsed by getopts. It stores the index of the first argument after the options it parses into a variable named `$OPTIND`.
+
+    - $@ represent the array containing all input arguments.
+    - $# is the number of the command line arguments passed in.
+    - "${@:OPTIND:}" slices the array so that it removes the MODE argument, like nmap-only, making sure that we iterate through only the domains part of our input.
+    - Array slicing is a way of extracting a subset of items from an array.
+    - Bash array slicing syntax:
+      - "${INPUT_ARRAY:START_INDEX:END_INDEX}"
+        - the quotes (" ") around the command are necessary.
+
+  - The following are bash comparison evaluators you can use to change the functionality depending on what you're doing:
+    - -f flag tests whether a file exists.
+    - -eq tests if something equals something else. `if [ $3 -eq 1 ]`
+    - -ne tests if something is not equal to something else. `if [ $3 -ne 1 ]`
+    - The following are tests for greater than, less than, and their equal to variations:
+      - `if [ $3 -gt 1 ]`
+      - `if [ $3 -ge 1 ]`
+      - `if [ $3 -lt 1 ]`
+      - `if [ $3 -le 1 ]`
+    - -z and -n flags test whether a string is empty, the following are both true:
+      - `if [ -z "" ]`
+      - `if [ -n "abc" ]`
+    - -d, -f, -r, -w, -x, check for directory or file statuses. The following will all return true if the files, directories, or permissions are exists or are true:
+      - `if [ -d /bin ]`
+      - `if [ -f /bin/bash ]`
+      - `if [ -r /bin/bash ]`
+      - `if [ -w /bin/bash ]`
+      - `if [ -x /bin/bash ]`
+    - You can also use the && and || operators to combine and test expressions.
+    - The following returns true if both expressions are true:
+      - `if [ $3 -gt 1 ] && [ $3 -lt 3 ]`
+    - The following returns true if at least one of them is true:
+      - `if [ $3 -gt 1 ] || [ $3 -lt 0 ]`
+    - You can find more comparison flags in the test command by running `man test` (if you have man installed)
+
+**Writing a Function Library**
+"As your codebase get larger, you should consider writing a _function library_ to reuse code. We can store all the commonly used functions in a separated file called scan.lib. That way, we can call these functions as needed from future recon tasks." Alright, lets do it!
+
+- Create a file called scan.lib and add the functions we have so far. See the scripts under "# A variation of the script utilizing a function library:" in [recon.sh](). The function library can be found in [scan.lib]()
+- "You might build multiple networking tools that all require DNS resolution. In this case, you can simply write the functionality once and use it in all of your tools"
+
+**Building Interactive Programs**
+
+- To make an interactive program, we will need to utilize while loops. As long as the CONDITION is true, the while loop will execute the code between do and done repeatedly.
+- ex.:
+  `while CONDITION
+do
+  DO SOMETHING
+done`
+- We can use a while loop to repeatedly prompt the user for a new domain until they quit the program:
+  `while [ $INPUT != "quit" ];do
+  echo "Please enter a domain:
+  read INPUT
+  if [ $INPUT != "quit" ];then
+    scan_domain $INPUT
+    report_domain $INPUT
+  fi
+done`
+- to invoke the -i option, we can use a while loop to parse option by using getopts repeatedly.
+  `while getopts "m:i" OPTION;do
+  case $OPTION in 
+    m)
+      MODE=$OPTARG
+      ;;
+    i)
+      INTERACTIVE=true
+      ;;
+  esac
+done`
+- The final version of the script (this one including the interactive mode), can be found in the standalone script [recon.sh]()
+- "Interactive tools can help your workflow operate more smoothly. For example, you can build testing tools that will let you choose how to proceed based on preliminary results."
+
+**Using Special Characters**
+
+- In Unix, commands return 0 on success and a positive integer on failure.
+- `$?` contains the exit value of the last command executed.
+- You can test for execution success and failures with something like this:
+  `#!/bin/sh
+chmod 777 scripts.sh 
+if [ "$?" -ne "0";then
+  echo "Chmod failed. You might not have permissiosn to do that."
+fi`
+- `$$` contains the current process's ID.
+  - This special variable can be useful when you run multiple instances of the same script and need to create temporary files for that script.
+  - To do this, use something like `/tmp/script_name_$$` to separate the different temporary files by process ID.
+- "Variables that aren't input parameters are global to the entire script. If you want other programs to use the variable as well, you need to export the variable:
+  `export VARIABLE_NAME=VARIABLE_VALUE"
+  - I commonly do this with things like the IP address I'm pen-testing (if singular): `export IP=192.168.0.45`
+  - "If you don't export a variable or source it in another script, the value gets destroyed after the scripts exists. But if you export the (variable) in the first script and run the script and run the script before running a second script, the second script will be able to read (the variables) value."
+- `*` stands for all.
+  - to list all files in the directory that end in the extension .txt you can use: `ls *.txt`
+- Backticks "`" indicate command substitution. They can be used in place of $().
+- `echo $(whoami)` can be written as:
+  ```
+  echo `whoami`
+  ```
+- Special characters are not read as special characters if placed in quotes.
+  - `echo "abc '*' 123"` will print the string: `"abc '*' 123"`
+- The backslash is the escape character.
+  - Here's some good examples from the book:
+  - "`$ echo "\" is a double quote.\$ is a dollar sign.`
+  - `` \` is a backtick. \\ is a blackslash."``
+  - You can also use a \ to indicate that a line of code has not ended after the line break:
+  - `chmod 777 \
+script.sh`
+    - This is the same as: `chmod 777 script.sh`
+- At the end of this section, the author suggests using building automation scripts as a way to build your hacking methodology. They also suggest to make a directory for your scripts and organize them by different categories (recon, fuzzing, automated reporting, etc).
+  - organizing your scripts and making function libraries is a good way to be able to easily incorporated new tools into your hacking workflow.
+
+**Scheduling Automatic Scans**
+
+- We will use _Cron_ to schedule our scripts.
+- Edit your users _crontabs_ by running `crontab -e`
+- Crontab syntax:
+  `A B C D E command_to_be_executed
+A: Minute (0 - 59)
+B: Hour (0 - 23)
+C: Day (1 - 31)
+D: Month (1 - 12)
+E: Weekday (0 - 7) (Sunday is 0 or 7, Monday is 1)`
+- The `run-parts` command in crontabs tells Cron to run all the scripts stored in a directory.
+  - ex: `30 21 * * * run-parts /Users/vickie/scripts/security`
+  - This command will run all of the scripts located in /Users/vickie/scripts/security at 9:30PM.
+- Schedule a diff tasks to compare scans to see if anything has changed between two scans: `diff SCAN_1 SCAN_2`
+  - This can help to identify new domains, subdomains, endpoints, and other new assets of a target when they appear in a new scan of the same domain.
+  - Sample script:
+    `#!/bin/bash
+DOMAIN=$1 
+DIRECTORY=$DOMAIN_recon
+echo "Checking for new changes about the target: $DOMAIN.\n Found these new things."
+diff <SCAN AT TIME 1> <SCAN AT TIME 2>`
+  - You would then schedule this script to run at an interval that makes sense to you.
+- Github has a Notification feature that will tell you when significant events on a repository occur.
+  - Turn it on by navigating to Settings > Notifications, then set up an email for github to send notifications to, to get alerts.
+  - You then just need to setup a crontab for updating your github repo, or write the updating of github repos into your scripts.
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
