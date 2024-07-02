@@ -4,11 +4,13 @@
 
 - [Chapter 1: Picking a Bug Bounty Program](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-1-picking-a-bug-bounty-program)
 - [Chapter 2: Sustaining Your Success](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-2-sustaining-your-success)
-- [Chapter 3: How the Internet Works](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#how-the-internet-works)
+- [Chapter 3: How the Internet Works](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-3-how-the-internet-works)
 - [Chapter 4: Environmental Setup and Traffic Interception](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#environmental-setup-and-traffic-interception)
-- [Chapter 5: Web Hacking Reconnaissance](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#web-hacking-reconnaissance)
-  - [Google Dorking]()
-  - [Scope Discovery]()
+- [Chapter 5: Web Hacking Reconnaissance](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance)
+  - [Google Dorking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#google-dorking)
+  - [Scope Discovery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#scope-discovery)
+  - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#writing-your-own-recon-scripts)
+- [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -19,7 +21,7 @@ History: [Bug Bounty Programs](https://en.wikipedia.org/wiki/Bug_bounty_program)
 Asset = An application, website, or product that you can hac.  
 Pick a program that has assets that play to your strengths, based on your skill set, experience level, and preferences
 
-**Asset Types: **
+**Asset Types:**
 
 - **Social Sites and Applications:**
 
@@ -341,7 +343,7 @@ Pick a program that has assets that play to your strengths, based on your skill 
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
-### How the Internet Works
+### Chapter 3: How the Internet Works
 
 **The Client-Server Model**
 
@@ -495,7 +497,7 @@ Pick a program that has assets that play to your strengths, based on your skill 
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
-### Environmental Setup and Traffic Interception
+### Chapter 4: Environmental Setup and Traffic Interception
 
 The setup section is very basic and only necessary if you've never used BurpSuite and don't have a setup for pen testing already.
 
@@ -520,14 +522,14 @@ The setup section is very basic and only necessary if you've never used BurpSuit
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
-### Web Hacking Reconnaissance
+### Chapter 5: Web Hacking Reconnaissance
 
 **Manually Walking Through the Target**
 
 - Try to use every function the website has to offer: payments, events, create different users with different privileges, click all the links and see where they go, etc.
 - You're exploring the attack surface
 
-#### **Google Dorking**
+#### Google Dorking
 
 - Advanced google searches are a powerful technique to find the resources you need quickly and accurately.
 - Can be used for recon or finding POCs, Payloads, etc.
@@ -731,7 +733,7 @@ Usage:
 - Look for functions that deal with authentication, password reset, state-changing actions, or private info reads.
 - Pay attention to code that deals with user input, database entries, file reads, and file uploads.
 - Look for configuration files to gather more information about their infrastructure
-- Look for old endpoints and S3 bucket URLs that you can attack.
+- Look for old endpoint s and S3 bucket URLs that you can attack.
 
 - Outdated dependencies and the unchecked use of dangerous functions are also a huge source of bugs.
 - Pay attention to dependencies and imports being used and go through the versions list to see if they're outdated.
@@ -820,7 +822,7 @@ See [Scripts/recon.sh](https://github.com/Xerips/BookNotes/blob/main/BugBountyBo
   - .name_value extracts the name_value field of each item.
   - $DOMAIN/crt is the input file to the jq command.
   - learn more about [jq](https://stedolan.github.io/jq/manual/)
-- Combine all output files into a master report with [this script]().
+- Combine all output files into a master report with [this script](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/recon.sh).
 
 **Scanning Multiple Domains**
 
@@ -844,50 +846,52 @@ do
 done`
 - Implementing the functionality:
 
-  - ````for i in "${@:$OPTIND:$#}"
-    do
-      # Do the scans for $i
-    done```
-    ````
-  - "${@:$OPTIND:$#}" is an array that contains every command line argument, besides the ones that are already parsed by getopts. It stores the index of the first argument after the options it parses into a variable named `$OPTIND`.
+```
+for i in "${@:$OPTIND:$#}"
+do
+  # Do the scans for $i
+done
+```
 
-    - $@ represent the array containing all input arguments.
-    - $# is the number of the command line arguments passed in.
-    - "${@:OPTIND:}" slices the array so that it removes the MODE argument, like nmap-only, making sure that we iterate through only the domains part of our input.
-    - Array slicing is a way of extracting a subset of items from an array.
-    - Bash array slicing syntax:
-      - "${INPUT_ARRAY:START_INDEX:END_INDEX}"
-        - the quotes (" ") around the command are necessary.
+- "${@:$OPTIND:$#}" is an array that contains every command line argument, besides the ones that are already parsed by getopts. It stores the index of the first argument after the options it parses into a variable named `$OPTIND`.
 
-  - The following are bash comparison evaluators you can use to change the functionality depending on what you're doing:
-    - -f flag tests whether a file exists.
-    - -eq tests if something equals something else. `if [ $3 -eq 1 ]`
-    - -ne tests if something is not equal to something else. `if [ $3 -ne 1 ]`
-    - The following are tests for greater than, less than, and their equal to variations:
-      - `if [ $3 -gt 1 ]`
-      - `if [ $3 -ge 1 ]`
-      - `if [ $3 -lt 1 ]`
-      - `if [ $3 -le 1 ]`
-    - -z and -n flags test whether a string is empty, the following are both true:
-      - `if [ -z "" ]`
-      - `if [ -n "abc" ]`
-    - -d, -f, -r, -w, -x, check for directory or file statuses. The following will all return true if the files, directories, or permissions are exists or are true:
-      - `if [ -d /bin ]`
-      - `if [ -f /bin/bash ]`
-      - `if [ -r /bin/bash ]`
-      - `if [ -w /bin/bash ]`
-      - `if [ -x /bin/bash ]`
-    - You can also use the && and || operators to combine and test expressions.
-    - The following returns true if both expressions are true:
-      - `if [ $3 -gt 1 ] && [ $3 -lt 3 ]`
-    - The following returns true if at least one of them is true:
-      - `if [ $3 -gt 1 ] || [ $3 -lt 0 ]`
-    - You can find more comparison flags in the test command by running `man test` (if you have man installed)
+  - $@ represent the array containing all input arguments.
+  - $# is the number of the command line arguments passed in.
+  - "${@:OPTIND:}" slices the array so that it removes the MODE argument, like nmap-only, making sure that we iterate through only the domains part of our input.
+  - Array slicing is a way of extracting a subset of items from an array.
+  - Bash array slicing syntax:
+    - "${INPUT_ARRAY:START_INDEX:END_INDEX}"
+      - the quotes (" ") around the command are necessary.
+
+- The following are bash comparison evaluators you can use to change the functionality depending on what you're doing:
+  - -f flag tests whether a file exists.
+  - -eq tests if something equals something else. `if [ $3 -eq 1 ]`
+  - -ne tests if something is not equal to something else. `if [ $3 -ne 1 ]`
+  - The following are tests for greater than, less than, and their equal to variations:
+    - `if [ $3 -gt 1 ]`
+    - `if [ $3 -ge 1 ]`
+    - `if [ $3 -lt 1 ]`
+    - `if [ $3 -le 1 ]`
+  - -z and -n flags test whether a string is empty, the following are both true:
+    - `if [ -z "" ]`
+    - `if [ -n "abc" ]`
+  - -d, -f, -r, -w, -x, check for directory or file statuses. The following will all return true if the files, directories, or permissions are exists or are true:
+    - `if [ -d /bin ]`
+    - `if [ -f /bin/bash ]`
+    - `if [ -r /bin/bash ]`
+    - `if [ -w /bin/bash ]`
+    - `if [ -x /bin/bash ]`
+  - You can also use the && and || operators to combine and test expressions.
+  - The following returns true if both expressions are true:
+    - `if [ $3 -gt 1 ] && [ $3 -lt 3 ]`
+  - The following returns true if at least one of them is true:
+    - `if [ $3 -gt 1 ] || [ $3 -lt 0 ]`
+  - You can find more comparison flags in the test command by running `man test` (if you have man installed)
 
 **Writing a Function Library**
 "As your codebase get larger, you should consider writing a _function library_ to reuse code. We can store all the commonly used functions in a separated file called scan.lib. That way, we can call these functions as needed from future recon tasks." Alright, lets do it!
 
-- Create a file called scan.lib and add the functions we have so far. See the scripts under "# A variation of the script utilizing a function library:" in [recon.sh](). The function library can be found in [scan.lib]()
+- Create a file called scan.lib and add the functions we have so far. See the scripts under "# A variation of the script utilizing a function library:" in [recon.sh](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/recon.sh). The function library can be found in [scan.lib](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/recon.sh)
 - "You might build multiple networking tools that all require DNS resolution. In this case, you can simply write the functionality once and use it in all of your tools"
 
 **Building Interactive Programs**
@@ -953,8 +957,7 @@ fi`
   - `` \` is a backtick. \\ is a blackslash."``
   - You can also use a \ to indicate that a line of code has not ended after the line break:
   - `chmod 777 \
-script.sh`
-    - This is the same as: `chmod 777 script.sh`
+script.sh` - This is the same as: `chmod 777 script.sh`
 - At the end of this section, the author suggests using building automation scripts as a way to build your hacking methodology. They also suggest to make a directory for your scripts and organize them by different categories (recon, fuzzing, automated reporting, etc).
   - organizing your scripts and making function libraries is a good way to be able to easily incorporated new tools into your hacking workflow.
 
@@ -984,5 +987,9 @@ diff <SCAN AT TIME 1> <SCAN AT TIME 2>`
 - Github has a Notification feature that will tell you when significant events on a repository occur.
   - Turn it on by navigating to Settings > Notifications, then set up an email for github to send notifications to, to get alerts.
   - You then just need to setup a crontab for updating your github repo, or write the updating of github repos into your scripts.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Cross-site Scripting
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
