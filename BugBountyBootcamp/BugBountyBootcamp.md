@@ -14,10 +14,10 @@
 - [Chapter 7: Open Redirects](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-7-open-redirects)
 - [Chapter 8: ClickJacking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-8-clickjacking)
 - [Chapter 9: Cross-Site Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-9-cross-site-request-forgery)
-- [Chapter 10: Insecure Direct Object References (IDORs)]()
-- [Chapter 11: ]()
-- [Chapter 12: ]()
-- [Chapter 13: ]()
+- [Chapter 10: Insecure Direct Object References (IDORs)](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-10-insecure-direct-object-references-idors)
+- [Chapter 11: SQL Injection](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-11-sql-injection)
+- [Chapter 12: Race Conditions](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-12-race-conditions)
+- [Chapter 13: Server-Side Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-13-server-side-request-forgery)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
