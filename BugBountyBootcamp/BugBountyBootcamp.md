@@ -2027,7 +2027,7 @@ _Take Over User Accounts by Using CSRF_
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
-### Chapter 10: Insecure Direct Object References
+### Chapter 10: Insecure Direct Object References (IDORs)
 
 "Like XSS and open redirects, _insecure direct object references_ (IDORs) are a type of bug present in almost every web application. They happen when the application grants direct access to a resource based on the user's request, without validation."
 
