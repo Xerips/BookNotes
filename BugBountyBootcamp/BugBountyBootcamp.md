@@ -14,6 +14,10 @@
 - [Chapter 7: Open Redirects](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-7-open-redirects)
 - [Chapter 8: ClickJacking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-8-clickjacking)
 - [Chapter 9: Cross-Site Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-9-cross-site-request-forgery)
+- [Chapter 10: Insecure Direct Object References (IDORs)]()
+- [Chapter 11: ]()
+- [Chapter 12: ]()
+- [Chapter 13: ]()
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -2024,5 +2028,436 @@ _Take Over User Accounts by Using CSRF_
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
 
 ### Chapter 10: Insecure Direct Object References
+
+"Like XSS and open redirects, _insecure direct object references_ (IDORs) are a type of bug present in almost every web application. They happen when the application grants direct access to a resource based on the user's request, without validation."
+
+**Mechanisms**
+
+- IDORs boil down to when users can access resources that do not belong to them by directly referencing the object ID, object number, or filename - this breaks access control.
+- ex. Your user ID is 1234, and on example.com you can access your private messages by navigating to `https://example.com/messages?user_id=1234`. If you change the `user_id` to `user_id=2233` and you can see another users private messages, you've found an IDOR.
+  - ex. code for this vulnerability:
+    ```
+    messages = load_messages(request.user_id)
+    display_messages(messages)
+    ```
+- IDORs can also be present in state-changing endpoints like /change_password.
+- IDORs often affect database objects.
+- They can happen when an application references a system file directly.
+  - This request allows users to access a file they've uploaded:
+    `https://example.com/uploads?file=user1234-01.jpeg`
+  - The above also provides a clue about the naming convention of uploaded files: "USER_ID-FILE_NUMBER.FILE_EXTENSION."
+    - An attacker could use this naming convention to access anyone's uploaded files by guessing the filenames.
+  - An attacker might also be able to view sensitive system files through the vulnerable endpoint with something like this: `https://example.com/uploads?file=/PATH/TO/etc/shadow`
+    - Scanning with nmap can reveal things like the OS, OS version, and versions of the applications running on the server. Using this information can also help narrow the search for sensitive system files.
+
+**Prevention**
+
+- "IDORs happen when an application fails at two things. First, it fails to implement access control basedon user identity. Second, it fails to randomize object IDs and instead keeps references to data objects, like a file or a database entry, predictable."
+- Applications can prevent IDORs by checking the user's identity and permissions before granting access to a resource, for example, by checking if the user's session cookies correspond to the `user_id` that the resources belong to.
+  - The website can also use a unique, unpredictable key or a hashed identifier to reference each user's resources.
+    - In the first example in this session, it was easy to guess another users `user_id`, but if the user IDs were hashed the same resource would look more like this: `https://example.com/messages?user_key=6MT9Ea1V9F7r9pns0mK1eDAEW`
+    - If the hash `6MT9Ea1V9F7r9pns0mK1eDAEW` represents `user_id=1234`, good luck guessing `user_id=2233`!
+- Attackers could still leak user information if they can find a way to steal these URLs or user_keys.
+- The best way to protect against IDORs is fine-grained access control, or a combination of access control and randomization or hashing of IDs.
+
+**Hunting for IDORs**
+
+- A source code review that checks if all direct object references are protected by access control is a great way to find IDORs.
+
+_Step 1: Create Two Accounts_
+
+- Create 2 accounts for every permission level: admin accounts, 2 regular user accounts, two group member accounts, and two non-group-member accounts.
+  - Doing this allows for testing access control issues among similar user accounts, as well as between different privilege level accounts.
+  - One account is the attacker and the other is the victim (used to observe the effects).
+- You may need to contact the company to get access to so many accounts.
+- If the different levels of privileges are locked behind a paywall, you may be able to ask the company for free accounts for testing but paying for an account can also pay off.
+- You should also test while not logged in to see if you can use an unauthenticated session to access the information or functionalities only available to legitimate users.
+
+_Step 2: Discover Features_
+
+- Use the highest privilege account you own and go through the application looking for application features to test.
+- Pay attention to functionalities that return user information or modify user data.
+- Examples of features that may have IDORs:
+
+  - Endpoint for reading user messages:
+    `https://example.com/messages?user_id=1234`
+  - Endpoint for reading user files:
+    `https://example.com/uploads?file=user1234-1.jpeg`
+  - Endpoint for deleting user messages:
+
+    ```
+    POST /delete_message
+
+    (POST request body)
+    message_id=user1234-0111
+    ```
+
+  - Endpoint for accessing group files:
+    `https://example.com/group_files?group=group3`
+  - Endpoint for deleted a group:
+
+    ```
+    POST /delete_group
+
+    (POST request body)
+    group=group3
+    ```
+
+_Step 3: Capture Requests_
+
+- "Browse through each application feature you mapped in the preceding step and capture all the requests going from your web client to the server, Inspect each request carefully and find the parameters that contain numbers, user-names, or IDs."
+  - IDORs can be triggered from different locations from within a request: URL parameters, form fields, filepaths, headers, and cookies.
+- Use two browsers to log into a different accounts.
+  - Use one browser and user to attack the other browser and user and look for signs of the attacks success.
+  - Use Burp or Zap to modify the traffic from Firefox then check if the attack was successful on the account using, for example, Chrome.
+- REST and GraphQL APIs are also often vulnerable to IDOR attacks.
+
+_Step 4: Change the IDs_
+
+- Check if you can access the victim account's information by using the attacker account.
+- Check if you can modify the second user's account from the first.
+  - Use the endpoints you found in Step 2 and if any of your requests succeed in accessing or modifying an alternative users information, you've found an IDOR.
+
+**Bypassing IDOR Protection**
+
+- "IDORs aren't always as simple as switching out a numeric ID. As applications become more functionally complex, the way they reference resources also often becomes more complex. Modern web applications have also begin implementing more protection against IDORs, and many now use more complex ID formats."
+
+_Encoded IDs and Hashed IDs_
+
+- Always try to decode high entropy strings. They may be encoded and not hashed, giving you the info you need after decoding.
+  - ex: `https://example.com/messages?user_id=MTIzNQ`
+    - The user ID in the above example is base64url-encoded, so it can be decoded.
+    - Once decoded, you may be able to execute an IDOR attack by base64url-encoding another user ID. Decoding the user_id may also give you some good insight into the naming convention of IDs.
+    - Burp has a Smart Decode tool to help identify and decode different encoding schemes.
+    - You could also just try encoding it using a variety of schemes and see what works: URL encoding, HTML encoding, hex encoding, octal encoding, base64, base64url, etc.
+  - (Not in the book) ex: `https://example.com/messages?user_id=7110eda4d09e062aa5e4a390b0a572ac0d2c0220`
+    - The above is a SHA1 hash of "1234," This cannot be decoded, but it could be brute forced (because 1234 would be easy to bruteforce...).
+    - You can do this by using a tool like JohnTheRipper or HashCat and a file containing a list of suspected user IDs.
+    - This is made easier by using a hash identifier.
+- Compare IDs even when they appear hashed or randomized. If the application uses an algorithm that doesn't randomize quite well enough, you may be able to detect a pattern.
+
+_Leaked IDs_
+
+- "It might also be possible that the application leaks IDs via another API endpoint or other public pages of the application, like the profile page of a user. I once found an API endpoint that allowed users to retrieve detailed direct messages through a hashed `conversation_id` value... But later i found that anyone could request a list of `conversation_ids` for each users, just by using their public user ID!"
+  - The random `convesation_id` looked like this: `GET /messages?conversation_id=01SUR7GJ43HS93VAR8xxxx`
+  - The request to get a list of conversation_ids from the API using public user_ids looked like this: `GET /messages?user_id=1236`
+  - The user ID was publicly available, so it was easy to get a list of all of their conversation_id's and read all of their private messages.
+
+_Offer the Application an ID, Even If It Doesn't Ask for One_
+
+- "In modern web applications, you'll commonly encounter scenarios in which the application uses cookies instead of IDs to identify the resources a user can access."
+  - ex: When you send a GET request to an endpoint, the app will deduce your identity based on your session cookie, and send the messages asoociated with that user.
+  ```
+  GET /api_v1/messages
+  Host: example.com
+  Cookies: sessions=YOUR_SESSION_COOKIE
+  ```
+  - If the web app has an alternative way of retrieving resources, using object IDs, the app may still be vulnerable to IDORs.
+  - Append an id, user_id, message_id, or other object references to the URL query to see if it makes a difference in the applications behavior
+    `GET /api_v1/messages?user_id=ANOTHER_USERS_ID`
+
+_Keep an Eye Out for Blind IDORs_
+
+- Sometimes the results of a successful IDOR are not leaked directly. They may instead be reflected in export files, email, text alerts, etc.
+
+  - ex. An endpoint on example.com allows users to email themselves a receipt
+
+  ```
+  POST /get_receipt
+
+  (POST request body)
+  receipt_id=3001
+  ```
+
+  - All receipts should be unique, regardless of the user, so if you were to request the receipt of another user, you may have it emailed to you instead.
+
+- You may also have to wait a while, if you were to successfully exploit an endpoint that generates a monthly report, it may take up to a month to see the results.
+
+_Change Request Method_
+
+- Try all requests methods: GET, POST, PUT, DELETE, PATCH, HEAD, CONNECT, OPTIONS, TRACE, etc.
+
+  - Applications often enable multiple request methods but fail to implement the same access control for each method
+  - ex. a GET request might fail but a DELETE request might succeed:
+    `GET example.com/uploads/user1234-01.jpeg` - FAILED
+    `DELETE example.com/uploads/user1234-01.jpeg` - SUCCESS!
+
+  ```
+  PUT example.com/uploads/user1234-01.jpeg
+
+  (PUT request body)
+  NEW_FILE
+  ```
+
+  - May be able to update or add the new file.
+
+**Escalating the Attack**
+
+"The impact of an IDOR depends on the affected function, so to maximize the severity of your bugs, you should always look for IDORs in critical functionalities first. Both _read-based_ IDORs (which leak information but do not alter the database) and _write-based_ IDORs (which can alter the database in an unauthorized way) can be of high impact"
+
+- Look for state-changing (write-based) IDORs in password reset, password change, account recovery features, etc.
+  - These should pay more than features that change email subscription settings, for example.
+- Look for non-state-changing (read-based) IDORs that handle sensitive information like direct messages, personal information, private content.
+  - Consider which application functionalities make use of this information and look for IDORs accordingly.
+- Combine IDORs with self-XSS to form a stored XSS.
+- An IDOR on a password reset endpoint combined with username enumeration can lead to a mass account takeover.
+- A write IDOR on an admin account may lead to RCE.
+
+**Automating the Attack**
+
+- Use Burp or your own scripts to automate IDORs after you've built up your skills.
+  - Use Burp intruder to iterate through IDs to find valid ones.
+  - Use Burp extension Autorize to scan for authorization issues by accessing higher-privileged accounts with lower-privileged accounts.
+  - Burp Auto-Repeater and AuthMatrix allow you to automate the process of switching out cookies, headers, and parameters.
+  - Check out the BAppStore in Burp to find more extensions.
+
+**Finding Your First IDOR!**
+
+1. Create two accounts for each application role and designate one as the attacker account and the other as the victim account.
+2. Discover features in the application that might lead to IDORs. Pay attention to features that return sensitive information or modify user data.
+3. Revisit the features you discovered in step 2. With a proxy, intercept your browser traffic while you browse through the sensitive functionalities.
+4. With a proxy, intercept each sensitive request and switch out the IDs that you see in the requests. If switching out IDs grants you access to other user's information or lets you change their data, you might have found an IDOR.
+5. Don't despair if the application seems to be immune to IDORs. Use this opportunity to try a protection-bypass technique! If the application uses an encoded, hashed, or randomized ID, you can try decoding or predicting the IDs. You can also try supplying the application with an ID when it does not ask for you. Finally, sometimes changing the request method type or file type makes all the difference.
+6. Monitor for information leaks in export files, email, and text alerts. An IDOR now might lead to an info leak in the future.
+7. Draft your first IDOR report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 11: SQL Injection
+
+"SQL is a programming language used to query or modify information stored within a database. A SQL _injection_ is an attack in which the attacker executes arbitrary SQL commands on an application's database by supplying malicious input inserted into a SQL statement. This happens when the input used in SQL queries is incorrectly filtered or escaped and can lead to authentication bypass, sensitive data leaks, tampering of the database, and RCE in some cases."
+
+- SQL injections are on the decline, since most web frameworks have built-in mechanisms that protect against them.
+- If found, they tend to be critical vulnerabilities with high payouts.
+
+  - Even though they are less common, the high payout makes them worth taking a look for.
+
+- If you're interested in learning about SQL Injections, I'd recommend visiting [PortSwigger's academy](https://portswigger.net/web-security/sql-injection). They have labs and a lot of information on SQL injection, Cross-Site Scripting, Cross-site request forgery (CSRF), Race Conditions, etc.
+  - Because of this resource, I'm going to skip through this section of the book, as PortSwigger is a better resource for learning about SQL Injection.
+  - You can also use tools like [sqlmap](http://sqlmap.org) to automate the process of detecting and exploiting SQL injections. A full tutorial can be found [here](https://github.com/sqlmapproject/sqlmap/wiki/).
+
+**Finding Your First SQL Injection!**
+
+1. Map any of the application's endpoints that take in user input.
+2. Insert test payloads into these locations to discover whether they're vulnerable to SQL injections. If the endpoint isn't vulnerable to classic SQL injections, try inferential techniques instead.
+3. Once you've confirmed that endpoint is vulnerable to SQL injections, use different SQl injection queries to leak information from the database.
+4. Escalate the issue. Figure out what data you can leak from the endpoint and whether you can achieve an authentication bypass. Be careful not to execute and actions that would damage the integrity of the target's database, such as deleting user data or modifying the structure of the database.
+5. Finally, draft up your first SQL injection report with an example payload that the security team can use to duplicate your results. Because SQL injections are quite technical to exploit most of the time, it's a good idea to spend some time crafting an easy-to-understand proof of concept.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 12: Race Conditions
+
+"Race conditions are one of the most interesting vulnerabilities in modern web applications. They stem from simple programming mistakes developers often make, and these mistakes have proved costly: attacker have used race conditions to steal money from online banks, e-commerce sites, stock brokerages, and cryptocurrency exchanges."
+
+**Mechanisms**
+
+- A _race condition_ occurs when two sections of code that are designed to execute in sequence get executed out of sequence.
+- _Concurrency_ is the ability to execute different parts of a program simultaneously without affecting the outcome of the program.
+  - Concurrency is used to drastically improve the performance of a program by having multiple parts of the programs code execute at the same time.
+  - Two types of Concurrency: Multiprocessing and multithreading.
+    - Multiprocessing: Using multiple central processing units (CPUs), the hardware that executes instructions, to perform simultaneous computations.
+    - Multithreading: The use of a single CPU that has multiple threads to perform concurrent executions.
+      - The threads take turns using the CPUs computational power.
+      - ex. If one thread is suspended while waiting for user input, another can take over the CPU to execute computations.
+      - Arranging the sequence of execution of multiple threads is called _scheduling_. There are different scheduling algorithms that are selected for different performance priorities.
+        - Some algos may execute the highest-priority tasks first, with others might execute tasks by giving out computational power in turns (regardless of priority).
+        - **These flexible scheduling schemes are what create race conditions.**
+- Race conditions occur when devs don't adhere to certain safe concurrency principles.
+
+  - Since the scheduling algo can swap between the execution of two threads at any time, you can't predict the sequence in which the threads execute each action.
+
+- ex. [Found here](https://en.wikipedia.org/wiki/Race_condition)
+  - Two concurrent threads of execution are each trying to increase the value of a global variable by 1. If the variable starts out with a value of 0, it should end up with a value of 2. Ideally, the threads would be executed in the stages shown in Table 12-1.
+
+12-1:
+| |Thread 1| Thread 2| Value of variable A|
+|---|---|---|--|
+|Stage 1| | | 0 |
+|Stage 2| Read value of A| | 0|
+|Stage 3| Increase A by 1| | 0|
+|Stage 4| Write the value of A| | 1|
+|Stage 5| | Read value of A| 1|
+|Stage 6| | Increase A by 1| 1|
+|Stage 7| | Write the value of A| 2|
+
+- If the two threads are run simultaneously, without any consideration of the conflicts that may occur when accessing the same resource, the execution coul dbe scheduled as in Table 12-2.
+
+12-2
+| |Thread 1| Thread 2| Value of variable A|
+|-------|--------|---------|--------------------|
+|Stage 1| | | 0 |
+|Stage 2| Read value of A| | 0 |
+|Stage 3| | Read value of A | 0 |
+|Stage 4| Increase A by 1| | 0 |
+|Stage 5| | Increase A by 1| 0 |
+|Stage 6| Write the value of A | | 1 |
+|Stage 7| | Write the value of A| 1 |
+
+- "In summary, race conditions happen when the outcome of the xecution of one thread depends on the outcome of another thread, and when two threads operate on the same resources without considered that other threads are also using those resources. Certain programming languages, such as C/C++, are more prone to race conditions because of the way they manage memory.
+
+**When a Race Condition Becomes a Vulnerability**
+
+- When a race condition affects a security control mechanism, it becomes a vulnerability.
+  - ex. When a sensitive action executes before a security check is completed.
+  - Race conditions are often referred to as _time-of-check_ or _time-of-use_ vulnerabilities.
+- Here's a juicy example:
+
+|         | Thread 1                       | Thread 2                       | Balance of accounts A + B       |
+| ------- | ------------------------------ | ------------------------------ | ------------------------------- |
+| Stage 1 | Check account A balance ($500) |                                | $500                            |
+| Stage 2 |                                | Check account A balance ($500) | $500                            |
+| Stage 3 | Add $500 to account B          |                                | $1,000 ($500 in A, $500 in B)   |
+| Stage 4 |                                | Add $500 to account B          | $1,500 ($500 in A, $1,000 in B) |
+| Stage 5 | Deduct $500 from account A     |                                | $1,000 ($0 in A, $1,000 in B)   |
+| Stage 6 |                                | Deduct $500 from account A     | $1,000 ($0 in A, $1,000 in B)   |
+
+- Race Conditions aren't exclusive to banking sites. They could also be found in voting systems, video games (duping), etc.
+
+**Prevention**
+
+- Use _synchronization_ or other mechanisms to protect resources during execution by ensuring threads using the same resources don't execute simultaneously.
+  - Resource locks are one of these mechanisms. They block other threads from operating on the same resources by _locking_ a resource.
+    - In the banking example, Thread 1 could lock the balance of accounts A and B before modifying them so that Thread 2 would have to wait for it to finish before accessing the resources.
+- Most programming languages that have concurrency abilities also have synchronization functionality built in.
+  - Be aware of concurrency issues in your applications and apply synchronization measure accordingly.
+- Follow the principle of least privilege to ensure Race Conditions don't extend into severe security issues.
+  - The applications and processes should only be granted the privileges needed to complete their tasks.
+    - If an app only requires read privileges, don't give it read/write/execute privileges.
+
+**Hunting for Race Conditions**
+
+- Just because it's simple, doesn't mean that it's easy! Race Conditions often require a bit of luck.
+
+_Step 1: Find Features Prone to Race Conditions_
+
+- Race conditions can be found in features that deal with numbers: online voting, online gaming scores, bank transfers, e-commerce payments, gift card balances, etc.
+  - ex. You find a request that deals with transferring money from your banking site. Copy the request for testing - You can use **Copy as curl command** to copy from BurpSuite.
+
+_Step 2: Send Simultaneous Requests_
+
+- ex. If you have $3000 in your bank account, use curl to send multiple requests at once to see if you can transfer more than you have:
+  - Use the curl command you've copied from BurpSuite to send multiple requests at once with the & operator: `curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds>`
+  - Test for operations that should be allowed once and not multiple times.
+  - If you have $3000, don't try to transfer $5000. If you have $3000 don't try to transfer $10. The first won't work at all and isn't worth testing; the second will work, but only as intended.
+
+_Step 3: Check the Results_
+
+- Did it work or not?
+- The more requests you send at once, the more likely you are to be able to find a Race Condition exploit.
+
+_Step 4: Create a Proof of Concept_
+
+- ex. A PoC from our example:
+
+1. Create an account with a $3,000 balance and another one with zero balance. The account with $3,000 will be the source account for our transfers, and the one with zero balance will be the destination.
+2. Execute this command: `curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds> & curl <endpoint request to tansfer $3000 in funds>`
+
+- This will attempt to transfer $3,000 to another account multiple times simultaneously.
+
+3. You should see more than $3,000 in the destination account. Reverse the transfer and try the attack a few more times if you don't see more than $3,000 in the destination account.
+
+- Make sure to include instructions to try again if the first attempt fails.
+- (Not in the book):
+  - Another thing that can change the outcome of a race condition is latency. You may have different results from a server located in close proximity to the target than you would from a server that is on the other side of the world from the target.
+  - The amount of requests is important. You could successfully exploit an endpoint, but you haven't exploited it enough to overwhelm a final check on the status of the account.
+    - Example: You successfully doubled the $3000 but the application checks for these double deposits and corrects them, however, it only does this for double deposits. If you were to triple or quadruple the deposit, it may only correct a portion of the duplicated funds.
+
+**Finding Your First Race Condition!**
+
+1. Spot the features prone to race conditions in the target application and copy the corresponding requests.
+2. Send multiple of these critical requests to the server simultaneously. You should craft requests that should be allowed once but not allowed multiple times.
+3. Check the results to see if your attack has succeeded. And try to execute the attack multiple times to maximize the chance fo success.
+4. Consider the impact of the race condition you just found.
+5. Draft up your first race condition report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 13: Server-Side Request Forgery
+
+"_Server-side request forgery (SSRF)_ is a vulnerability that lets an attacker send requests on behalf of a server. During an SSRF, attackers forge the request signatures of the vulnerable server, allowing them to assume a privileged position on a tework, bypass firewall controls, and gain access to internal services."
+
+**Mechanisms**
+
+"SSRF vulnerabilities occur when an attacker finds a way to send requests as a trusted server in the target's network. Imagine a public-facing web server on _example.com_'s network named _public.example.com._ This server hosts a proxy service, located at _public.example.com/proxy_, that fetches the web page specified in the _url_ parameter and displays it back to the user. For example, when the user accesses the following URL, the web application would display the google.com home page: `https://public.example.com/proxy?url=https://google.com`"
+
+- If example.com has an internal server `admin.example.com` they would need to set up access controls to keep it from being reached via the internet. This may be done by creating an allowlist in the firewall that only allows machines with a valid IP (employee workstations) to access the panel.
+  - You may be able to bypass the access controls by using the proxy to access the internal server with: `https://public.example.com/proxy?url=https://admin.example.com`
+    - Because the request is coming from the public server, which most likely is on the allow list (or is in the IP range allowed by the allowlist) you may be able to access the admin panel and bypass the access control.
+- Firewalls are generally implemented on the perimeter of the network, meaning that if you already have access to the internal network, you won't be blocked by the firewall.
+- SSRF has two types: Regular SSRF and Blind SSRF.
+  - Both types exploit the trust between machines on the same network.
+  - In blind SSRF, the attacker does not receive feedback from the server via an HTTP response or error message.
+    - ex. `https://public.example.com/send_request?url=https://admin.example.com/delete_user?user=1`
+    - In this example, the SSRF might work, but the attack won't know unless they can access user 1 to see if it has been deleted or not.
+  - The example above is a regular SSRF as the attacker would see the success of the attack in the displaying of the admin panel.
+
+**Prevention**
+
+- If the server doesn't stop users from accessing internal resources using their public facing resources, an SSRF vulnerability occurs.
+
+  - ex. _public.example.com_ allows users to upload a profile photo by retrieving it from a URL via this POST request:
+
+    ```
+    POST /upload_profile_from_url
+    Host: public.example.com
+
+    (POST request body)
+    user_id=1234&url=https://www.attacker.com/profile.jpeg
+    ```
+
+  - If the server does not make a distinction between internal and external resources, an attacker could just as easily request a local file stored on the server, or any other file on the network.
+  - ex. This would cause the server to fetch the internal file and display it as the user's profile picture (if that file existed):
+
+  ```
+  POST /upload_profile_from_url
+  Host: public.example.com
+
+  (POST request body)
+  user_id=1234&url=https://localhost/passwords.txt
+  ```
+
+- Two main types of protection against SSRFs: Blocklists and allowlists.
+  - Blocklists are lists of banned addresses.
+    - Using a blocklist you could block internal network addresses and reject any request that redirects to those addresses.
+  - Allow lists allow only those URLs found in the predetermined list, and rejects all other requests.
+    - The site could only allow uploads from dropbox, or some other service.
+- Some servers also protect against SSRFs by requiring special headers or secret tokens in internal requests.
+
+**Hunting for SSRFs**
+
+- The best way to find SSRFs is through reviewing source code and looking for whether the application validates all user-provided URLs.
+  - If you can't get the source code, test features that are most prone to SSRFs.
+
+_Step 1: Spot Features Prone to SSRFs_
+
+- SSRFs occur in features that require visiting and fetching external resources: webhooks, file uploads, document and image processors, link expansions or thumbnails, proxy services, any endpoint that processes user-provided URLs, URLs embedded in files that are processed by the application (XML files and PDF files can often be used to trigger SSRFs), hidden API endpoints that accept URLs as input, and input that get inserted into HTML tags.
+  - Webhooks and proxy services are particularly juicy for SSRFs.
+- Add a new webhook example:
+
+  ```
+  POST /webhook
+  Host: public.example.com
+
+  (POST request body)
+  url=https://www.attacker.com
+  ```
+
+- File upload via URL:
+
+  ```
+  POST /upload_profile_from_url
+  Host: public.example.com
+
+  (POST request body)
+  user_id=1234&url=https://attacker.com/profile.jpeg
+  ```
+
+- Proxy Service:
+  ```
+  https://public.example.com/proxy?url=https://google.com
+  ```
+
+_Step 2: Provide Potentially Vulnerable Endpoints with Internal URLs_
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
