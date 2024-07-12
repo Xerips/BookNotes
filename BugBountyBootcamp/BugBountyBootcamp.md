@@ -2688,4 +2688,279 @@ _Network and Port Scanning using Server Response Times_
 
 ### Chapter 14: Insecure Deserialization
 
+"_Insecure Deserialization_ vulnerabilities happenw hen applications deserialize program object without proper precaution. An attack can then manipulate serialized object to change the program's behavior...They're hard to find and exploit, because they tend to look different depending on the programming language and livraries used to build the application. These bugs also require deep technical understanding and ingenuity to exploit. Although they can be a challenge to find, they are worth the effort. Countless write-ups describe how researches used these bugs to achieve RCE on critical assets from companies such as Google and Facebook."
+
+**Mechanisms**
+
+"_Serialization_ is the process by which some bit of data in a programming language gets converted into a format that allows it to be saved in a database or transferred over a network. _Deserialization_ refers to the opposite process, whereby the program reads the serialized object from a file or the network and converts it back into an object."
+
+- Some objects in programming languages are difficult to transfer through a network or tore in a database without corruption.
+  - Serialization and deserialization allow programming languages to reconstruct identical program objects in different computer environments.
+  - Programming languages that support serialization and deserialization: Java, PHP, Python, Ruby.
+- Devs usually trust user-supplied serialized data because it is difficult to read or unreadable to a user.
+  - Attackers abuse this trust.
+- To achieve an insecure deserialization vulnerability the attacker manipulates the serialized object to cause unintended consequences in the program.
+  - Authentication bypass or RCE are common focuses for this type of attack.
+  - ex. An application takes a serialized object from the user and uses the data contained within to determine who is logged in.
+    - the attacker might be able to tamper with that object and authenticate as someone else.
+    - If the application uses an unsafe deserialization operation, the attacker may also be able to embed code snippets in the object and get them to execute during deserialization (RCE).
+- Learning how different programming languages implement serialization and deserialization is a great way to learn insecure deserialization attacks.
+  - PHP: install php to run scripts in the command line or use an online PHP tester like [ExtendsClass](https://extendsclass.com/php.html)
+    - Note\* not all online php testers support serialization and deserialization.
+  - Java: Check if you have java installed with `java -version` in the command line, if you don't have it, you can install it following the instructions on their website [https://java.com/en/download/help/download_options.html](https://java.com/en/download/help/download_options.html)
+    - You can also use an online Java compiler to test code: [Tutorials Point](https://www.tutorialspoint.com/compile_java_online.php)
+
+_PHP_
+
+- In the book the author mentions that about half of all the publicly disclosed insecure deserialization bugs were found in PHP.
+  - Most Insecure Deserialization vulns are resolved as high-impact or critical-impact vulnerabilities.
+
+Understanding how PHP serializes and deserializes objects:
+
+- When an application needs to store a PHP object to transfer it over the network, it calls the PHP function `serialize()` to pack it up.
+- When an application needs to use that data, it calls `unserialize()`
+
+  - ex. snippet showing the serialize() process:
+    ```
+    <?php
+      class User{
+      public $username;
+      public $status;
+      }
+      $user = new User;
+      $user->username = 'hacker'
+      $user->status = 'not admin';
+      echo serialize($user);
+    ?>
+    ```
+  - This code declares a class called `User`.
+
+    - Each `User` object will contain a `$username` and a `$status` attribute.
+    - It sets the attributes with the username and status required.
+    - Finally, it serializes the `$user` object and prints out the string representing the serialized object.
+    - Save the code as serialize_test.php and run it with `php serialize_test.php`
+      - output: `O:4:"User":2:{s:8:"username";s:6:"hacker";s:6:"status";s:9:"not admin";}`
+
+  - The basic structure of a PHP serialized string is `data type:data`.
+
+    - Types of data:
+      - b:THE_BOOLEAN;
+      - i:THE_INTEGER;
+      - d:THE_FLOAT;
+      - s:LENGTH_OF_STRING:"ACTUAL_STRING";
+      - a:NUMBER_OF_ELEMENTS:{ELEMENTS}
+      - 0:LENGTH_OF_NAME:"CLASS_NAME":NUMBER_OF_PROPERTIES:{PROPERTIES}
+
+  - ex. snippet showing the unserialize() process:
+
+    ```
+    <?php
+      class User{
+        public $username;
+        public $status;
+      }
+      $user = new User;
+      $user->username = 'hacker';
+      $user->status = 'not admin';
+      $serialized_string = serialize($user);
+
+      $unserialized_data = unserialize($serialized_string);
+      var_dump($unserialized_data);
+      var_dump($unserialized_data["status"]);
+    ?>
+
+    ```
+
+  - The first 8 lines of code (after <php) create a yser object, serialize it, and store the serialized string to the variable `$serialized_string`.
+  - It then deserializes the variable `$serialized_string` and stores the restored object into the variable `$unserialized_data`.
+  - `var_dump()` is a PHP function that displays the value of a variable.
+  - the last two lines display the value of the deserialized object `$unserialized_data` and it's status property.
+    - **This code snippet is exactly as seen in the book, but it will throw an error** because it's trying to access a property of an object using an array syntax, this is not allowed in PHP.
+    - The correct way to access properties of objects is with arrow syntax. So the last line `var_dump($unserialized_data["status"]);` should be changed to `echo $unserialized_data->status;`, I've captured this is the sub directory /Scripts where you can find the examples of code from this book.
+  - Some programming languages also allow devs to serialize into other standardized formats, such as JSON and YAML.
+
+_Controlling Variable Values_
+
+- If the serialized object isn't encrypted or signed, anyone can create a `User` object.
+  - This is a common way insecure deserialization endangers applications.
+- Some applications pass in a serialized object as a method of euthentication without encrypting or signing it because they think serialization alone will stop users from tampering with the values.
+  - If this is the case, you can mess with the values encoded in the serialized string:
+  ```
+  <?php
+    class User{
+      public $username;
+      public $status;
+    }
+    $user = new User;
+    $user->username = 'hacker';
+    $user->status = 'admin';
+    echo serialize($user);
+  ?>
+  ```
+  - The above shows changing the status from `'not admin'` to `'admin'`.
+  - To do this, you would intercept the outgoing request in your proxy and insert the new object in place of the old one.
+    - check if you get admin privileges to confirm.
+  - You could also change your serialized string directly to: `O:4:"User":2:{s:8:"username";s:6:"hacker";s:6:"status";s:5:"admin";}`
+    - Note\* you could need to change the s:5 as well as the "admin"
+
+_unserialize() Under the Hood_
+
+- To better understand how `unserialize()` can lead to RCEs, you need to know how PHP creates and destroys objects.
+- PHP _magic methods_ are method names in PHP that have special properties.
+  - If the serialized object's class implements any method with a magic name, these methods will have magic properties, such as being automatically run during certain points of execution, or when certain conditions are met.
+  - Two of these magic methods are `__wakeup()` and `__destruct()`.
+    - `__wakeup()` method is used during instantiation when the program creates an instance of a class in memory, which is what `unserialize()` does; it takes the serialized string, which specifies the class and the properties of that object, and uses that data to create a copy of the originally serialized object. It then searches for the `__wakeup()` method and executes code in it.
+      - The `__wakeup()` method is usually used to reconstruct any resources that the object may have, reestablish any database connections that were lost during the serialization, and perform other reinitialization tasks.
+      - It is often used during a PHP object injection attack because it provides a convenient entry point to the server's database or other functions in the program.
+      - The program then operates on the object and uses it to perform other actions.
+    - When no references to the deserialized object exists, the program calls the `__destruct()` function to clean up the object.
+      - This method often contains useful code in terms of exploitation.
+      - ex. If as `__destruct()` method contains code that deletes and cleans up files associated with the object, the attacker might be able to mess with the integrity of the filesystem by controlling the input passed into these functions.
+
+_Using POP Chains_
+
+- When attackers control a serialized object passed into `unserialize()`, they can control the properties of the created object. This gives them the opportunity to hijack the flow of the application by choosing the values passed into magic methods like `__wakeup()`
+  - This is not always effective. If the declared magic methods of the class don't contai any useful code in terms of exploitation, for example, the available classes for object injections contain only a few methods, and none of them contain code injection opportunities, then the unsafe deserialization is useless.
+- Another way of achieving RCE, even in the above scenario is using POP chains.
+
+  - _Property-oriented programming (POP) chain_ is a type of exploit whose name comes from the fact that the attacker controls all of the deserialized object's properties.
+  - POP chains work by stringing bits of code together, called _gadgets_, to achieve the attacker's ultimate goal.
+  - These gadgets are code snippets borrowed from the codebase.
+  - POP chains use magic methods as their initial gadget.
+  - Attackers can then use these methods to call other gadgets.
+  - ex. from [https://owasp.org/www-community/vulnerabilities/PHP_Object_Injection](https://owasp.org/www-community/vulnerabilities/PHP_Object_Injection).
+
+  ```
+  class Example
+  {
+    private $obj;
+    function __construct()
+    {
+      // some PHP code...
+    }
+    function __wakeup()
+    {
+      if (isset($this->obj)) return $this->obj->evaluate();
+    }
+  }
+
+  class CodeSnippet
+  {
+    private $code;
+
+    function evaluate()
+    {
+    eval($this->code);
+    }
+  }
+
+  // some PHP code...
+
+  $user_data = unserialize($_POST['data']);
+
+  // some PHP code...
+  ```
+
+  - In this application, the code defines two classes: `Example` and `CodeSnippet`.
+    - `Example` has a property named `obj`, and when an `Example` object is deserialized, its `__wakeup()` function is called, which calls `obs`'s `evaluate` method.
+    - `CodeSnippet` class has a property named `code` that contains the code string to be executed and an `evaluate()` method, which calls `eval()` on the `code` string.
+    - In another part of the code, the program accepts the POST parameter `data` from the user and calls `unserialize()` on it.
+    - Since that last line contains an insecure deserialization vulnerability, an attacker can use the following code to generate a serialized object:
+    ```
+    class CodeSnippet
+    {
+    private $code = "phpinfo();";
+    }
+    class Example
+    {
+      private $obj;
+      function __construct()
+      {
+        $this->obj = new CodeSnippet;
+      }
+    }
+    print urlencode(serialize(new Example));
+    ```
+    - This code snippet defines a class named `CodeSnippet` and sets its code property to `phpinfo();`.
+    - Then it defines a class named `Example`, and sets its `obj` property to a new `CodeSnippet` instance on instantiation.
+    - Finally, it creates an `Example` instance, serialized it, and URL-encodes the serialized string.
+      - The attacker can then feed the generated string into the POST parameter `data`.
+      - Notice that the attacker's serialized object uses class and property names found elsewhere in the application's source code.
+        - As a result, the program will do the following when it receives the crafted `data` string.
+        - First, it will unserialize the object and create an `Example` instance.
+        - Then, since `Example` implements `__wakeup()`, the program will call `__wakeup()` and see that the `obj` property is set to a `CodeSnippet` instance.
+        - Finally, it will call the `evaluate()` method of the `obj`, which runs `eval("phpinfo();")`, since the attacker set the `code` property to `phpinfo()`.
+        - The attacker is able to execute any PHP code of their choosing.
+  - POP chains achieve RCE by chaining and reusing code found in the application's codebase.
+
+  - ex. How to use POP chains to achieve SQL injection from [https://owasp.org/www-community/vulnerabilities/PHP_Object_injection](https://owasp.org/www-community/vulnerabilities/PHP_Object_injection).
+  - In this example, an application defines a class called `Example3` somewhere in the code and deserializes unsanitized user input from the POST parameter `data`:
+
+  ```
+  class Example3
+  {
+    protected $obj;
+    function __construct()
+    {
+      // some PHP code...
+    }
+    function __toString()
+    {
+      if (isset($this->obj)) return $this->obj->getValue();
+    }
+  }
+
+  // some PHP code...
+
+  $user_data = unserialize($_POST['data']);
+
+  // some PHP code...
+  ```
+
+  - Notice the `Example3` implements the `__toString()` magic method.
+    - In this case, when an `Example3` instance is treated as a string, it will return the result of the `getValue()` method run on its `$obj` property.
+  - Let's also say that, somewhere in the application, the code defines the class `SQL_Row_Value`. It has a method named `getValue()`, which executes an SQL query. The SQL query takes input from the `$_table` property of the `SQL_Row_Value` instance:
+
+  ```
+  class SQL_Row_Value
+  {
+    private $_table;
+    // some PHP code...
+    function getValue($id)
+    {
+      $sql = "SELECT * FROM {$this->_table} WHERE id = " . (int)$id;
+      $result = mysql_query($sql, $DBFactory::getConnection());
+      $row = mysql_fetch_assoc($result);
+  return $row['value'];
+    }
+  }
+  ```
+
+  - An attacker can achieve SQL injection by controlling the `$obj` in `Example3`.
+  - The following code will create an `Example3` instance with `$obj` set to a `SQL_Row_Value` instance, and with `$_table` set to the string "SQL Injection":
+
+  ```
+  class SQL_Row_Value
+  {
+    private $_table = "SQL Injection";
+  }
+  class Example3
+  {
+    protected $obj;
+    function __construct()
+    {
+      $this->obj = new SQL_Row_Value;
+    }
+  }
+  print urlencode(serialize(new Example3));
+  ```
+
+  - As a result, whenever the attacker's `Example3` instance is treated as a string, its `$obj`'s `get_Value()` method will be executed.
+    - This means the `SQL_Row_Value`'s `get_Value()` method will be executed with the `$_table` string set to "SQL Injection".
+  - The attacker has achieved a limited SQL injection, since they can control the string passed into the SQL query `SELECT * FROM {$this->_table} WHERE id= " . (int)$id;`.
+  - POP chains are similar to _return-oriented programming_ (ROP) attacks, and interesting technique used in binary exploitation.
+    - you can read more about it on [Wikipedia](https://en.wikipedia.org/wiki/Return-oriented_programming)
+
+_Java_
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
