@@ -18,6 +18,8 @@
 - [Chapter 11: SQL Injection](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-11-sql-injection)
 - [Chapter 12: Race Conditions](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-12-race-conditions)
 - [Chapter 13: Server-Side Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-13-server-side-request-forgery)
+- [Chapter 14: Insecure Deserialization](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-14-insecure-deserialization)
+- [Chapter 15: XML External Entity](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-15-xml-external-entity)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -2962,5 +2964,276 @@ _Using POP Chains_
     - you can read more about it on [Wikipedia](https://en.wikipedia.org/wiki/Return-oriented_programming)
 
 _Java_
+
+"Java applications are prone to insecure deserialization vulnerabilities because many of them handle serialized objects... For Java objects to be serializable, their classes must implement the `java.io.Serializable` interface. These classes also implement special methods, `writeObject()` and `readObject()`, to handle the serilization and deserialization, respectively, of object of that class."
+
+ex. [SerializeTest.java](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/Scripts/InsecureDeserialization/Java/SerializeTest.java):
+
+```
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.Serializable;
+import java.io.IOException;
+
+class User implements Serializable{
+  public String username;
+}
+
+public class SerializeTest{
+
+  public static void main(String args[]) throws Exception{
+
+    User newUser = new User();
+    newUser.username = "hacker";
+
+    FileOutputStream fos = new FileOutputStream("object.ser");
+    ObjectOutputStream os = new ObjectOutputStream(fos);
+    os.writeObject(newUser);
+    os.close();
+
+    FileInputStream is = new FileInputStream("object.ser");
+    ObjectInputStream ois = new ObjectInputStream(is);
+    User storedUser = (User)ois.readObject();
+    System.out.println(storedUser.username);
+    ois.close();
+  }
+}
+```
+
+- To compile this code: `javac SerializeTest.java`
+- To run this code: `Java SerializeTest`
+  - When you run the code, it should output the username: `hacker`
+- Only classes that implement Serializable can be serialized and deserialized.
+- To exploit Java applications via an insecure deserialization bug, we first have to find an entry point through which to insert the malicious serialized object. In Java applications, serializable objects are often used to transport data in HTTP headers, parameters, or cookies.
+- Java serialized objects are not human readable like PHP serialized strings, They often contain non-printable characters as well. But they do have a couple of signatures that can help you recognize them and find potential entry points for your exploits:
+  - Starts with `AC ED 00 05` in hex or `rO0 in base 64`. (You might see these within HTTP requests as cookies or parameters.)
+  - The `Content-Type` header of an HTTP message is set to `application.x-java-serialized-object`.
+- Java serialized objects are often encoded before transmission.
+  - Look for encoded versions of these signatures as well.
+- Once you've found a user-supplied serialized object, try manipulating program logic by tampering with the information stored within the objects.
+  - If used as a cookie for access control:
+    - Change usernames
+    - Change roll names
+    - Change identity markers that are present in the object
+      - Re-serialize the object and relay it back to the application via your proxy.
+  - Additional things to tamper with in the object:
+    - file paths
+    - file specifier
+    - control flow value to see if you can alter the program's flow.
+- If the code doesn't restrict which classes the application is allowed to deserialize, it can deserialize any serializable classes to which it has access.
+  - This means attackers can create their own objects of any class.
+  - An attacker can achieve RCE by constructing objects of the right classes that can lead to arbitrary command execution.
+
+_Achieving RCE_
+
+- The path from a Java deserialization bug to RCE can be convoluted. To gain code execution, you often need to use a series of gadgets to reach the desired method for code execution. This works similarly to exploiting deserialization bugs using POP chains in PHP - Look back at examples of POP chains.
+- In Java applications, you'll find gadgets in the libraries loaded by the application. Using gadgets that are in the application's scope, create a chain of method invocations that eventually leads to RCE.
+- Finding and chaining gadgets to formulate an exploit can be time-consuming. You're also limited to the classes available to the applications, which can restrict what your exploits can do.
+  - To save time, try creating exploit chains by using gadgets in popular libraries, such as the Apache Commons-Collections, the Spring Framework, Apache Groovy, and Apache Commons FileUpload.
+    - You'll find many of these published online.
+
+_Automating the Exploitation by Using Ysoserial_
+
+- [Ysoserial](https://github.com/frohoff/ysoserial/) is a tool that can be used to generate payloads that exploit Java insecure deserialization bugs, saving tons of time by creating gadget chains for you.
+- Ysoserial uses a collection of gadget chains discovered in common Java libraries to formulate exploit objects. With Ysoserial, you can create malicious Java serialized objects that use gadget from specified libraries with a single command:
+  `java -jar ysoserial.jar <gadget_chain> <command_to_execute>`
+  - ex: create a payload that uses a dadget chain in the Commons-Collections library to open a calculator on the target host:
+    `java -jar ysoserial.jar CommonsCollections1 calc.exe`
+- The program takes the command you specified and generates a serialized object that executes that command.
+- Sometimes the gadget chain will seem obvious, but often it's a matter of trial and error, as you'll have to discover which vulnerable libraries your target application implements. This is where good reconnaissance will help you.
+- Another resource for exploiting Javascript deserialization on [GitHub](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet/)
+
+**Prevention**
+
+- Defending against deserialization vulnerabilities is difficult.
+  - The best way to protect against these vulns varies greatly based on the programming language, libraries, and serialization format used.
+    - There is really no one-size-fits-all solution.
+- Make sure not to deserialize any data tainted by user input without proper checks.
+  - If deserialization is necessary, use an allowlist to restrict deserialization to a small number of allowed classes.
+- You can also use simple data types, like strings and arrays, instead of objects that need to be serialized when being transported.
+- To prevent the tampering of serizlized cookies, you can keep track of the session state on the server instead of relying on user input for session infromation.
+- You should keep an eye out for patches and make sure your dependencies are up-to-date to avoid introducing deserialization vulns via third-party code.
+- Some developers may try to mitigate deserialization vulnerabilities by identifying the commonly vulnerable classes and removing them from the application.
+  - This effectively restricts available gadgets attackers can use in gadget chains.
+  - This isn't a reliable form of protection. Limiting gadgets can be a great layer of defense, but hackers are creative and can always find more gadgets in other libraries.
+- It's important to address the root cause of of the vuln: The application deserializes user data insecurely.
+- [OWASP Deserialization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html)
+
+_Hunting for Insecure Deserialization_
+
+"Conducting a source code review is the most reliable way to detect deserialization vulnerabilities. From the examples in this chapter, you can see that the fastest way to find insecure deserialization vulnerabilities is by searching for deserialization functions in source code and checking if user input is being passed into it recklessly. For example, in a PHP application, look for `unserialize()`, and in a Java application, look for `readObject()`. In python and Ruby applications, look for the functions `pickle.loads()` and `Marshall.load()`, respectively."
+
+- Strategies to find deserialization vulns without examining code:
+  - Look for large blobs of data passed into an application. - A base64 string being passed into an application: `MDo0OiJVc2VyIjoyOntzOjg6InVzZXJuYW1lIjtzOjY6ImhhY2tlciI7czo2OiJzdGF0dXMiO3M6
+OToibm90IGFkbWluIjt9Cg==` which represents `0:4:"User":2:{s:8:"username";s:6:"hacker";s:6:"status";s:9:"not admin";}` in base64.
+  - Large blobs could be serialized objects that represent object injection opportunities.
+    - Try to decode these blobs to investigate what they are.
+    - Most will be base64.
+  - Pay attention to the `Content-Type` header of an HTTP request or response.
+    - `Content-Type` set to `application/x-java-serialized-object` indicates that the application is passing information via Java serialized objects.
+  - Search for features that may have to deserialize objects supplied by the user, such as database inputs, authentication tokens, and HTML form parameters.
+    - Once you've found a user supplied serialized object, you need to determine the type of serialized object it is:
+      - PHP object, Python object, Ruby object, or Java object.
+      - Look through the languages docs to find the structure of serialized objects.
+
+**Escalating the Attack**
+
+- The impact of insecure deserialization can be limited when the vulnerability relies on an obscured point of entry, or requires a certain level of application privilege to exploit, or if the vulnerable function isn't available to unauthenticated users.
+- Make sure to take the scope and Rules of Engagement into account!
+- Deserialization vulns can be dangerous so make sure not to cause damage to the target application when manipulating program logic or executing arbitrary code.
+
+**Finding Your First Insecure Deserialization!**
+
+1. If you can get access to an application's source code, search for deserialization functions in the source code that accept user input.
+2. If you cannot get access to source code, look for large blobs of data passed into an application. These could indicate serialized objects that are encoded.
+3. Alternatively, look for features that might hve to deserialize objects supplied by the user, such as database inputs, authentication tokens, and HTML form parameters.
+4. If the serialized object contains information about the identity of the user, try tampering with the serialized object found and see if you can achieve authentication bypass.
+5. See if you can escalate the flaw into a SQL injection or remote code execution. Be extra careful not to cause damage to your target application or server.
+6. Draft your first insecure deserialization report!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 15: XML External Entity
+
+"XML _external entity attacks (XXEs)_ are fascinating vulnerabilities that target the CML parsers of an application. XXEs can be very impactful bugs, as they can lead to confidential information disclosure, SSRFs and DoS attacks. Bu thtye are also difficult to understand and exploit."
+
+- Chapter goes over how to use XXEs to extract sensitive files on the target system, launch SSRFs, and trigger DoS attacks.
+
+**Mechanisms**
+
+"_Extensible Markup Language (XML)_ is designed for storing and transporting data. This markup language allows developers to define and represent arbitrary data structures in a text format using a tree-line structure like that of HTML."
+
+- ex. Applications use CML to transport identity information in Security Assertion Markup Language (SAML). The XML can look like this:
+  ```
+  <saml:AttributeStatement>
+    <saml:Attribute Name="username">
+      <saml:AttributeValue>
+        hacker
+      </saml:AttributeValue>
+    </saml:Attribute>
+  </saml:AttributeStatement>
+  ```
+- Unlike HTML, XML has user-defined tag names that let you structure the XML document freely.
+  - XML is widely used in web application functionalities like: authentication, file transfers, image uploads, or simply to transfer HTTP data from the client to the server and back.
+- XML documents can contain a _document type definition (DTD)_, which defines the structure of an XML document and the data it contains.
+  - These DTD can be laoded from external sources or declared in the document itself within a `DOCTYPE` tag.
+  - ex. DTD that defines an CML entity called `file`:
+    ```
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE example [
+      <!ENTITY file "hello!">
+    ]>
+    <example>&file;</example>
+    ```
+- XML entities work like variables in programming languages: any time you reference this entity by using the syntax `&file`, the XML document will load the value of `file` in its place. So any reference of `&file` within the XML document will be replaced by "Hello!".
+- XML documents can also use _external entities_ to access either local or remote content with a URL.
+  - If an entity's value is preceded by a `SYSTEM` keyword, the entity is an external entity, and it's value will be loaded from the URL.
+  - ex. The following DTD declares an external entity named `file` is the contents of `file:///example.txt` on the local file system:
+    ```
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE example [
+      <!ENTITY file SYSTEM "file:///example.txt">
+    ]>
+    <exmaple>&file;</example>
+    ```
+    - The last line loads the file entity in the XML document, referencing the contents of the .txt file located at `file:///example.txt`.
+- External entities can also load resources from the internet.
+  - ex.
+    ```
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE example [
+      <!ENTITY file SYSTEM "http://example.com/index.html">
+    ]>
+    <example>&file;</example>
+    ```
+  - If users can control the values of XML entities or external entities, they could be able to disclose internal files, port-scan internal machines, or launch DoS attacks.
+- Many sites use older or poorly configured XML parsers to read XML documents.
+  - If the parser allows user-defined DTDs or user input within the DTD and is configured to parse and evaluate the DTD, attackers can declare their own external entities to achieve malicious results.
+  - ex. If an application allows users to upload their own XML document, the app will parse and display the document back to the user:
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY file SYSTEM "file:///etc/shadow">
+  ]>
+  <example>&file;</example>
+  ```
+  - Parsing the XML file will cause the server to return the contents of /etc/shadow because the XML file includes the /etc/shadow via an external entity.
+- Applications are vulnerable to XXE's when the application accepts user supplied XML input or passes user input into DTDs, which is then parsed by an XML parser, and that XML parser reads local system files or sends internal or outbound requests specified in the DTD.
+
+**Prevention**
+
+"Preventing XXE's is all about limiting the capabilities of an XML parser. First, because DTD processing is a requirement of XXE attacks, you should disable DTD processing on the XML parsers if possible. If it's not possible to disable DTDs completely, you can disable external entities, parameter entities..., and inline DTDs (DTDs included in the XML document)."
+
+- To prevent XXE-based DoS attacks, you can limit the XML parser's parse time and parse depth. You can also disable the xpansion of entities entirely.
+- If using the default PHP XML parser, you need to set `libxml_disable_entity_loader` to `True` in order to disable the use of external entities.
+  - Consult the [OWASP Cheat Sheet](https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.md) for more information.
+- Input validation is another prevention method.
+  - Create an allow list for user-supplied values that are passed into XML documents, or sanitize potentially hostile data within XML documents, headers, or nodes.
+  - Use less complex data formats like JSON instead of XML whenever possible.
+- If the server takes XML input but does not return the XML document in an HTTP response (like in a classic XXE attack), attackers can use blind XXEs to exfiltrate data.
+  - These XXE attacks steal data by having the target server make an outbound request to the attacker's server with the stolen data. To prevent Blind XXEs, disallow outbound network traffic.
+- Review your dependencies: Many XXEs are introduced by an application's dependencies instead of its custom source code. Keep these up to date and review their source code if possible.
+
+**Hunting for XXEs**
+
+"To find XXE's, start with locating the functionalities that are prone to them. This includes anywhere that the application receives direct CML input, or receives input that is inserted into XML documents that the application parses."
+
+_Step 1: Find XML Data Entry Points_
+
+- Use a proxy to browse the target application then look for XML-like documents in HTTP messages by looking for the previously mentioned tree-like structures or by looking for signatures of an XML document "`<?cml`".
+- Keep an eye out for base64 or URL-encoded XML data and decode them.
+  - ex. base64-encoded blocks of HTML tend to start with `LD94bWw` which is base64-encoded "<?xml."
+- Look for file-upload features.
+  - By uploading xml files you might be able to smuggle XML into to the applications XML parser (if the application uses XML).
+  - XML can be written into document and image formats: XML, HTML, DOCX, PPTX, XLSX, GPX, PDF, SVG, and RSS feeds.
+    - Metadata embedded within images: GIF, PNG, JPEG are all based on XML.
+    - SOAP web services are also XML based.
+- You may be able to force the application into parsing XML data by submitting it to an endpoint that accepts plain text or JSON input.
+  - On endpoints that take other formats of input, modify the `Content-Type` header of your request to one of the following:
+    `Content-Type: text/xml` or `Content-Type: application/xml`.
+    - Then, include the XML data in your request body.
+- If you suspect the application receives user-submitted data and embeds it into an XML document on the server side, you can submit an XInclude test payload to the endpoint (Step 5).
+
+_Step 2: Test for Classic XXE_
+
+"Once you've determined tha tht endpoints can be used to submit XML data, you can start to test for the presence of functionalities needed for XXE attacks. This involves sending a few trial-and-error XXE payloads and observing the application's response."
+
+- If the app is returning results from the parser, you may be able to conduct a classic XXE attack.
+  - You can read the leaked files directly from the server's response.
+  - Check if XML entities are interpreted by inserting XML entities into the XML input and see if it loads properly:
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY test SYSTEM "Hello!">
+  ]>
+  <example>&test;</example>
+  ```
+  - Then test whether the `SYSTEM` keyword is usable by trying to load a local file:
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY test SYSTEM "file:///etc/hostname">
+  ]>
+  <example>&test;</example>
+  ```
+  - If the `SYSTEM` keyword doesn't work, replace it with the `PUBLIC` keyword instead.
+    - This tag requires you to supply an ID surrounded by quotes after the `PUBLIC` keyword.
+    - The parser uses this to generate an alternate URL for the value of the entity. For our purposes, you can just use a random string in its place:
+  ```
+  <?xml version="1.0" encoding="UTF-8"?>
+  <!DOCTYPE example [
+    <!ENTITY test PUBLIC "abc" "file:///etc/hostname">
+  ]>
+  <example>&test;</example?
+  ```
+  - Try to extract some common system files: `/etc/hostname`, `/etc/password`, `.bash_history`, `~/.bash_history`
+    - Bash history can be pretty juicy depending on what the user you access has been up to.
+    - Try to access files that are specific to the web apps architecture. Look up what files might be in the "/var/www/..." directories of the underlying tech.
+
+_Step 3: Test for Blind XXE_
+
+"If the server takes XML input but does not return the XML document in an HTTP response, you can test for a blind XXE instead... Most blind XXE attacks steal data by having the target server make a request to the attacker's server with the exfiltrated information."
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
