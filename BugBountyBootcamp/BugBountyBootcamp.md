@@ -4412,14 +4412,18 @@ _Step 2: Find CORS Misconfiguration_
 _Step 3: Find postMessage Bugs_
 
 - If the site uses `postMessage`, see if you can send or receive messages as an untrusted site.
+
   - Create an HTML page with an iframe that frames the targeted page accepting messages.
   - Try to send messages to that page that trigger a state-changing behavior.
   - If the target cannot be framed, open it as a new window instead:
+
   ```
   var recipient_window = window.open("https://TARGET_URL", target_domain)
   recipient_window.postMessage("RANDOM MESSAGE", "*");
   ```
+
   - Create an HTML page that listens for events coming from the target page, and trigger the postMessage from the target site. See if you can receive sensitive data from the target page.
+
   ```
   var recipient_window = window.open("https://TARGET_URL", target_domain)
 

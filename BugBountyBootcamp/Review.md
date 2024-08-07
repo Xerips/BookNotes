@@ -27,5 +27,4 @@
 ### Caution:
 
 - I've added in some of my own ideas or knowledge where I felt it would be useful. I've tried to mention that the information was not found in the book, so take these bits with a grain of salt. I'm by no means an expert, but I do have some knowledge that could be helpful.
-  - I may have missed mentioning that the information wasn't found in the book, but probably missed some parts that I took liberty with.
-  - Buy the book!
+  - I've probably missed some parts that I took liberty with - find out for sure by buying the book!
