@@ -31,25 +31,25 @@ Notes before you get started:
 
 ## Table of Contents:
 
-### [Basic Networking Tools](https://github.com/Xerips/BlackHatPython/tree/main/BasicNetworkingTools)
+### [Basic Networking Tools](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/BasicNetworkingTools)
 
-### [Sniffer](https://github.com/Xerips/BlackHatPython/tree/main/Sniffer)
+### [Sniffer](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/Sniffer)
 
-### [Scapy](https://github.com/Xerips/BlackHatPython/tree/main/Scapy)
+### [Scapy](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/Scapy)
 
-### [Web Hackery](https://github.com/Xerips/BlackHatPython/tree/main/WebHackery)
+### [Web Hackery](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/WebHackery)
 
-### [Extending Burp](https://github.com/Xerips/BlackHatPython/tree/main/ExtendingBurp)
+### [Extending Burp](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/ExtendingBurp)
 
-### [GitHubTrojan](https://github.com/Xerips/BlackHatPython/tree/main/GitHubTrojan)
+### [GitHubTrojan](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/GitHubTrojan)
 
-### [Trojaning Tasks for Windows](https://github.com/Xerips/BlackHatPython/tree/main/TrojaningTasksWin)
+### [Trojaning Tasks for Windows](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/TrojaningTasksWin)
 
-### [Fun With Exfiltration](https://github.com/Xerips/BlackHatPython/tree/main/FunWithExfil)
+### [Fun With Exfiltration](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/FunWithExfil)
 
-### [Windows Priv Esc](https://github.com/Xerips/BlackHatPython/tree/main/WindowsPrivEsc)
+### [Windows Priv Esc](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/WindowsPrivEsc)
 
-### [Offensive Forensics](https://github.com/Xerips/BlackHatPython/tree/main/OffensiveForensics)
+### [Offensive Forensics](https://github.com/Xerips/BookNotes/tree/main/BlackHatPython/OffensiveForensics)
 
 ## Tips and Tricks:
 
