@@ -4467,4 +4467,83 @@ _Step 5: Consider Mitigating Factors_
 
 ### Chapter 20: Single-Sign-On Security Issues
 
+"Single sign-on (SSO) is a feature that allows users to access multiple services belonging to the same organization without logging in multiple times. Once you've logged into a website that uses SSO, you won't have to enter your credentials again when accessing another service or resource belonging to the same company. For example, if you're logged into _facebook.com_, you won't have to reenter your credentials to use _messenger.com_, a Facebook service... In this chapter, we'll talk about three methods developers use to implement SSO, as well as some vulnerabilities related to each approach."
+
+**Mechanisms**
+
+Three most common ways of implementing SSO:
+
+- Cookie Sharing
+- SAML
+- 0Auth
+
+#### Cookie Sharing
+
+- SSO is easy to implement if the services that need shares authentication are located under the same parent domain.
+  - ex. web and mobile versions of Facebook: *www.facebook.com* and _m.facebook.com_
+  - These apps can share cookies across subdomains.
+
+_How Cookie Sharing Works_
+
+- Modern browsers allow sites to share cookies across subdomains if the `Domain` flag is set to a common parent domain.
+  - ex. all cookies will be sent to all subdomains of facebook with:
+    `Set-Cookie: cookie=abc123; Domain=facebook.com; Secure; HttpOnly`
+- If the SSO needs to be done across different domains, this approach will not work. _Facebook.com_ and _messenger.com_ can't share cookies because they don't share a common domain.
+- Vulnerabilities specific to cookie sharing:
+  - Stealing the session cookie through an attack like cross-site scripting.
+  - Subdomain takeover vulnerabilities.
+
+_Subdomain Takeovers_
+
+"Subdomain takeovers occur when an attacker takes control over a company's unused domain."
+
+- Best explained through example:
+  - A company wants to host its subdomain `abc.example.com` on the GitHub page `abc_example.github.io`.
+  - The company uses a DNS CNAME record to point `abc.example.com` to `abc_example.github.io` so users who try to access `adc.example.com` are redirected to the GitHub hosted page.
+  - If the GitHub site is deleted and no one remembers to remove the CNAME record that points to it, that CNAME record becomes a _dangling_ CNAME.
+    - This means anyone who can register the deleted site `abc_example.github.io` will be able to control the company's subdomain.
+- Subdomain takeovers allow hackers to launch phishing campaigns from the old subdomain as well as host malicious websites on the deleted subdomain.
+  - If the victim has already logged into `example.com` at least once and visits the malicious `abc.example.com` the attacker can steal their cookies with a malicious script and then would be able to login as that user across all `example.com` subdomains.
+    - If the user deletes cookies after closing their browser, they would have to be logged in for their browser to be able to send the correct cookies.
+- "Because the compromise of a single subdomain can mean a total compromise of the entire SSO system, using shared cookies as an SSo mechanism greatly widens the attack surface for each service."
+
+#### Security Assertion Markup Language (SAML)
+
+- SAML is an XML-based markup language used to facilitate SSO on larger-scale applications.
+- It enables SSO by facilitating information exchange among three parties: the **user**, the **identity provider**, and the **service provider**.
+
+_How SAML Works_
+
+- The **user** obtains an identity assertion from the identity provider and uses that to authenticate to the service provider.
+- The **identity provider** is a server in charge of authenticating the user and passing on user information to the service provider.
+- The **service provider** is the actual site the user is authenticating to.
+
+Workflow:
+
+1. The user tries to access a resource from the service provider.
+2. The service provider makes you send a SAML request to the identity provider.
+3. Once you've provided your credentials, the identity provider will send the user a SAML response.
+4. The user uses the SAML response to authenticate to the service provider.
+
+- The SAML response contains an identity assertion that communicates your identity to the service provider.
+- Could contain username, email address, or user ID.
+- ex. SAML identity assertion:
+
+```
+<saml:AttributeStatement>
+  <saml:Attribute Name="username">
+    <saml:AttributeValue>
+      user1
+    </saml:AttributeValue>
+  </Attribute>
+</saml:AttributeStatement>
+```
+
+Note: _All the SAML messages in this chapter are highly simplified for the sake of readability. Realistic SAML messages will be longer and contain a lot more information._
+
+_SAML Vulnerabilities_
+
+- Because an attacker who can control the SAML response passed to the service provider can authenticate as someone else, applications need to protect the integrity of their SAML messages.
+  - This is usually done through using a signature to sign the message.
+
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
