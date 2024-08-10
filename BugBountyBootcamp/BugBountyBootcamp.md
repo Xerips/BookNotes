@@ -25,6 +25,7 @@
 - [Chapter 18: Remote Code Execution](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-18-remote-code-execution)
 - [Chapter 19: Same-Origin Policy Vulnerabilities](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-19-same-origin-policy-vulnerabilities)
 - [Chapter 20: Single-Sign-On Security Issues](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-20-single-sign-on-security-issues)
+- [Chapter 21: Information Disclosure](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -4862,5 +4863,226 @@ _Step 1: Attempt a Path Traversal Attack_
 _Step 2: Search the Wayback Machine_
 
 - You can use the Wayback Machine to find hidden and deprecated endpoints, as well as a large number of current endpoints without actively crawling the site.
+- To search for a domain's files: https://web.archive.org/web/*/DOMAIN
+- To get the archived URLs related to the domain as a list: https://web.archive.org/web/*/example.com/\*
+- You can then use the search function in the top right of the results to see whether any sensitive pages have been archived.
+  - ex. search:
+  - /admin
+  - .config
+  - .conf
+  - .env
+  - .js
+  - .php
+  - Look for sensitive info like hard-coded credentials, hidden endpoints, etc.
+
+_Step 3: Search Paste Dump Sites_
+
+Sites to look at:
+
+- Pastebin
+- GitHub gists
+- Google Docs
+
+Pastebin
+
+- Has an API that allows users to search for public paste files by using a keyword, email, or domain name.
+- Tools:
+  - [Pastebin-scraper](https://github.com/streak/pastbin-scraper/)
+  - [PasteHunter](https://github.com/kevthehermit/PasteHunter)
+
+_Step 4: Reconstruct Source Code from an Exposed .git Directory_
+
+- Not in the book: .git directories are hidden by default, finding an exposed one would be rare today. That being said, if you don't try everything you might not find what you need.
+
+Tools:
+
+- [truffleHog](https://github.com/dxa4481/truffleHog/)
+- [Gitleaks](https://github.com/zricethezav/gitleaks/)
+
+_Check Whether a .git Folder is Public_
+
+- To check whether an application's .git folder is public, go to the application's root directory (example.com) and add /.git to the URL:
+  `https://example.com/.git`
+- If you get a 404 or 403, it's not public and you can't access it.
+
+_Downloading Files_
+
+- Use `wget` in recursive mode to mass-download all files stored within the specified directory and it's subdirectories:
+  `wget -r example.com/.git`
+
+_Reconstructing an entire .git directory_
+
+- If directory listing isn't enabled and the directory's files are not shows, you can still reconstruct the entire .git directory.
+
+Here's the entire section of the book written by the author in a Medium article:
+[Hacking Git Directories - Vickie Li](https://medium.com/swlh/hacking-git-directories-e0e60fa79a36)
+You should also check out her other articles at [https://medium.com/@vickieli](https://medium.com/@vickieli)!
+
+_Step 5: Finding Information in Public Files_
+
+- Look for information leaks in HTML and JavaScript files.
+- Use the **View page source** function in your browser to view the HTML source code of the current page.
+- Follow the links to find additional HTML files and JavaScript files the application is using.
+- `grep` every page for hardcoded credentials, API keys, and personal information with keywords like _password_, _passwd_, _pswd_, _api_key_, etc.
+- Use [LinkFinder](https://github.com/GerbenJavado/LinkFinder/) to help automate.
+
+**Escalating the Attack**
+
+- Verify that the leaked information you've found is still in use, applicable, etc. by trying to use the information.
+- Determine the impact of the leaked information you've found.
+- Finding a GitHub access token may give you access to their private repositories or allow you to modify their projects.
+- Getting access to an admin portal has far reaching implications.
+- Accessing the /etc/shadow file and cracking their passwords could lead to full system takeover.
+
+**Finding Your First Information Disclosure**
+
+1. Look for software version numbers and configuration information by using the recon techniques presented in Chapter 5.
+2. Start searching for exposed configuration files, database files, and other sensitive files uploaded to the production server that aren't protected properly. Techniques you can use include path traversal, scraping the Wayback Machine or paste dump sites, and looking for files in exposed .git directories.
+3. Find information in the application's public files, such as its HTML and JavaScript source code, by grepping the file with keywords.
+4. Consider the impact of the information you find before reporting it, and explore ways to escalate its impact.
+5. Draft your first information disclosure report and send it over to the bug bounty program!
 
 [Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 22: Conducting Code Reviews
+
+"Instead of testing applications by trying different payloads and attacks, you can locate insecure programming directly by looking for bugs in an application's source code. Source code review not only is a faster way of finding vulnerabilities, but also helps you learn how to program safely in the future, because you'll observe the mistakes of others. By learning how vulnerabilities manifest themselves in source code, you can develop an intuition about how and why vulnerabilities happen. Learning to conduct source code reviews will eventually help you become a better hacker."
+
+_If you are interested in learning more about code reviews beyond the strategies mentioned in this chapter, the [OWASP Code Review Guide](https://owasp.org/www-project-code-review-guide/) is a comprehensive resource to reference._
+
+**White-Box vs Black-Box Testing**
+
+- White-Box Testing: Tester gets full access to the source code.
+- Black-Box Testing: Testing the software from the outside in. You know nothing or very little about the internal logic.
+- Grey-Box Testing: Tester has partial or limited access to the source code.
+
+**The Fast Approach: grep Is Your Best Friend**
+
+- The following techniques are are speedy and often lead tot he discovery of some of the most severe vulnerabilities, but they tend to leave out more subtle bugs (not comprehensive).
+
+_Dangerous Patterns_
+
+- Using the `grep` command, look for specific functions, strings, keywords, and coding patterns that are known to be dangerous.
+  - ex. using the `eval()` function in PHP can indicate a possible code injection vulnerability. Below is a code snipped showcasing the `eval()` functions discovery:
+  ```
+  <?php
+    [...]
+    class UserFunction
+    {
+      private $hook;
+      function __construct(){
+        [...]
+      }
+      function __wakeup(){
+      if (isset($this->hook)) eval($this->hook);
+      }
+    }
+    [...]
+    $user_data = unserialize($_COOKIE['data']);
+    [...]
+    ?>
+  ```
+  - In this example, `$_COOKIE['data']` retrieves a user cookie named `data`.
+  - The `eval()` function executes the PHP code represented by the string passed in.
+  - So, this piece of code takes a user cookie named `data` and unserializes it.
+  - The application also defines a class named `UserFunction`, which runs `eval()` on the string stored in the instance's $hook property and unserializes it.
+  - This code contains an insecure deserialization vulnerability, leading to an RCE.
+    - This is because the application takes user input from a user's cookie and plugs it directly into an `unserialize()` function resulting in users being able to make `unserialize()` initiate any class the application has access to by constructing a serialized object and passing it into the `data` cookie.
+    - You can achieve RCE by using this deserialization flaw because it passes a user-provided object into `unserialize()`, and the `UserFunction` class runs `eval()` on user-provided input, which means users can make the application execute arbitrary code.
+  - To exploit this RCE, you simply have to set your `data` cookie to a serialized `UserFunction` object with the `hook` property set to whatever PHP code you want.
+  - You can generate the serialized object by using the following bit of code:
+  ```
+  <?php
+    class UserFunction
+    {
+      private $hook = "phpinfo();";
+    }
+    print urlencode(serialize(new UserFunction));
+  ?>
+  ```
+  - Passing the resulting string into the `data` cookie will cause the code `phpinfo()` to be executed.
+  - Example from [OWASP's PHP object injection guide](https://owasp.org/www-community/vulnerabilities/PHP_Object_Injection) and is also in [Chapter 14](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-14-insecure-deserialization).
+- Search for dangerous functions used on user-controlled data. Below is a list of these functions:
+
+| Language   | Function                                                                                                         | Possible Vulnerability                                                                                                                                                                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PHP        | eval(), assert(), system(), exec(), shell_exec(), passthru(), popen(), backticks (\`code`), include(), require() | RCE if used on unsanitized user input. eval() and assert() execute PHP code in its input, while system(), exec(), shell_exec(), passthru(), popen(), and backticks executre system commands. include() and require() can be used to execute PHP code by feeding the function a URL to a remote PHP script. |
+| PHP        | unserialize()                                                                                                    | Insecure deserialization if used on unsanitized user input.                                                                                                                                                                                                                                                |
+| Python     | eval(), exec(), os.system()                                                                                      | RCE if used on unsanitized user input.                                                                                                                                                                                                                                                                     |
+| Python     | pickle.loads(),yaml.load()                                                                                       | Insecure deserialization if used on unsanitized user input                                                                                                                                                                                                                                                 |
+| JavaScript | document.write(), documents.writeln()                                                                            | XSS if used on unsanitized user input. These functions write to the HTML document. So if attackers can control the value passed into it on a victim's page, the attacker can write JavaScript onto a victim's page.                                                                                        |
+| JavaScript | document.location.href()                                                                                         | Open redirect when used on unsanitized user input. document.location.href() changes the location of the user's page.                                                                                                                                                                                       |
+| Ruby       | System(), exec(), %x(), backticks (\`CODE`)                                                                      | RCE if used on unsanitized user input.                                                                                                                                                                                                                                                                     |
+| Ruby       | Marshall.load(), yaml.load()                                                                                     | Insecure deserialization if used on unsanitized user input.                                                                                                                                                                                                                                                |
+
+_Leaked Secrets and Weak Encryption_
+
+- grep for keywords such as: key, secret, password, encrypt, API, login, token, etc.
+- Use a regex search for hex or base64 strings.
+  - GitHub access tokens are lowercase, 40-character hex strings. A search pattern like \[a-f0-9{40}] would find them in source code.
+    - This regex searches for strings that are 40 characters long and contain only numbers and hex letters a to f.
+- The following is a python script that could be used by an organization to monitor their GitHub assets:
+
+  ```
+  import requests
+
+  GITHUB_ACCESS_TOKEN = "0518f...8ce70"
+  headers = {"Authorization": "token {}".format(GITHUB_ACCESS_TOKEN), \
+  "Accept": "application/vdn.github.v3+json"}
+  api_host = "https://api.github.com"
+  usernames = ["vikie"] # List users to analyze
+
+  def request_page(path):
+    resp = requests.Response()
+    try: resp = requests.get(url=path, headers=headers, timeout=15, verify=False)
+    except: pass
+    return resp.json()
+
+  def find_repos():
+    # Find repositories owned by the users.
+    for username in usernames:
+      path = "{}/users/{}/repos".format(api_host, username)
+      for repo in resp:
+        print(repo["name"])
+
+  if __name__ == "__main__":
+    find_repos()
+  ```
+
+  - This Python program takes in the username of a user from GitHub and prints out the names of all the user's repositories. The developer made the mistake of hard-coding the GitHub access token in the source code.
+
+- TruffleHog which has been mentioned multiple times in previous sections, is a tool that searches for secrets and using both regex and entropy scanning.
+- Looking for weak cryptography or hashing algorithms is hard during black-box testing but really easy to spot when reviewing source code.
+  - grep the names of weak algorithms like ECB, MD4, and MD5.
+
+_New Patches and Outdated Dependencies_
+
+- If you have access to the commit or change history of the source code, you can also focus your attention on the most recent code fixes and security patches.
+- Recent changes by their nature haven't been put to the test and are good places to look for bugs.
+- Look for the applications protection mechanisms and see if you can bypass them.
+- Search for the program's dependencies and check whether any of them are outdated.
+  - grep for keywords like import, require, dependencies, etc.
+  - Use the keywords associated with the language the program is written in.
+  - Check these dependencies for vulnerabilities with the [CVE database](https://cve.mitre.org/), or just google them for vulns.
+- The process of scanning an application for vulnerable dependencies is called _software composition analysis (SCA)_.
+  - The [OWASP Dependency-Check tool](https://owaps.org/www-project-dependency-check/) can help automate this.
+
+_Developer Comments_
+
+- Look through dev comments for hidden debug functionalities and accidentally exposed configuration files.
+- Dev commends can point out obvious programming mistakes.
+  - Developers can sometimes add comments to their code to remind themselves of incomplete tasks. Look for comments like:
+    `# todo: Implement CSRF protection on the change_password endpoint`
+- Search for the comment syntax of the programming language being used in the program as well as terms like "todo", "fix", "complete", "config", "setup", "remove", and "removed".
+
+_Debug Functionalities, Configuration Files, and Endpoints_
+
+- Hidden debug functionalities often lead to privilege escalation because they're intended to let developers bypass protection mechanisms.
+- They can be found at special endpoints, search for strings containing "http", "https", "ftp", "dev".
+  - ex. `http://dev.example.com/admin?debug=1&password=password # Access debug panel`
+- Configuration files allow you to gain more information about the target application and might contain credentials.
+  - Look for filepaths that lead to configuration files.
+  - Search for common configuration file extensions: .conf, .env, .cnf, .cf, .ini, .sys, .plist
+- Look for additional paths, deprecated endpoints, and endpoints in development.
+
+**The Detailed Approach**
