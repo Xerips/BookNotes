@@ -1,3 +1,3 @@
 # BookNotes
 
-Here you'll find notes from books I've read/worked through.
+Here you'll find notes from books I've worked through.
