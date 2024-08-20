@@ -258,3 +258,323 @@ This is all very basic information. Skipped.
 "Most of what the average user knows about a web application comes from what they can see and click in the graphical user interface (GUI) of their web browser. Under the hood, APIs perform much of the work. In particular, web APIs provide a way for applications to use the functionality and data of other applications over HTTP to feed a web application GUI with images, text, and videos."
 
 ### How Web APIs Work
+
+- Web APIs rely on HTTP to facilitate a client/server relationship between the host of the API (_provider_) and the system or person making an API request (_consumer_).
+- ex. Examples of API endpoints:
+  `https://example.com/api/v3/users/`
+  `https://example.com/api/v3/customers/`
+  `https://example.com/api/updated_on/`
+  `https://example.com/api/state/1/`
+
+- _Resources_ are the data being requested.
+- A _singleton_ resource is a unique object.
+  - ex. `/api/user/{user_id}`
+- A _collection_ is a group of resources.
+  - ex. `/api/profiles/users`
+- A _subcollection_ refers to a collection within a particular resource.
+
+  - ex. `/api/user/{user_id}/settings` is the endpoint to access the _settings_ subcollection of a specific (singleton) user.
+
+- When a consumer requests a resource from a provider, the request passes through an API _gateway_, which is an API management component that acts as an entry point to a web application.
+- The API gateway filters bad requests, monitors incoming traffic, and routes each request to the proper service or microservice.
+
+  - It also handles security controls such as authentication, authorization, encryption in transit using SSL, rate limiting, and load balancing.
+
+- A _microservice_ is a modular piece of a web application that handles a specific function.
+- Microservices use APIs to transfer data and trigger actions.
+  - ex. A web app with a payment gateway may have several different features on a single web page: a billing feature, a feature that logs customer account information, and one that emails receipts upon purchase.
+  - This application's back end design might be monolithic, meaning all the services exist within a single application.
+  - Or, it could have a microservice architecture where each service functions as its own standalone application.
+- These should be spelled out in the API _contract_ which is human-readable documentation that describes how to use the API and how you can expect it to behave.
+  - Often includes descriptions for: authentication requirements, user permission levels, API endpoints, required request parameters.
+- From a hackers perspective, the documentation can reveal which endpoints to call for customer data, which API keys you need in order to become an administrator, and even business logic flaws.
+- For a high quality example of API documentation you can look at [GitHub's documentation](https://docs.github.com/en/rest/reference/apps) for the `/applications/{client_id}/grants/{access_token}` endpoint.
+
+  - This documentation includes a description of the purpose of the API request, the HTTP request method to use when interacting with the API endpoint, and the endpoint itself (_/applications_), followed by variable.
+
+- _CRUD_ stands for _Create, Read, Update, Delete_ and describes the primary actions and methods used to interact with APIs.
+
+  - _Create_ is the process of making new records, and is done with POST requests.
+  - _Read_ is data retrieval, done through GET requests.
+  - _Update_ is how currently existing records are modified without being overwritten and is accomplished with POST or PUT requests.
+  - _Detele_ is the process of erasing records, which can be done with the POST or DELETE requests.
+  - CRUD is a best practice, but is not always adhered to by developers. You will need to test beyond CRUD when hacking APIs.
+
+- By convention: curly brackets mean that a given variable is necessary within the path parameters.
+  - The {client_id} variable must be replaced with an actual client's ID, and the {access_token} variable must be replaced with an actual access token.
+  - Tokens are what API providers use to identify and authorize requests to approved API consumers.
+  - API documentation may also specify variables with a colon or square brackets:
+    `/api/v2/:customers/` or `/api/[collection]/[client_id]`
+- The "Parameters" section lays out the authentication and authorization requirements to perform the described actions, including the name of each parameter value, the type of data to provide, where to include the data, and a description of the parameter value.
+
+### Standard Web API Types
+
+- APIs come in a few standard types and generally a given API will use only one type.
+  - The type of API is chosen relative to their standard rules, functions, and purposes.
+  - You may encounter endpoints that don't match the format and structure of the others of that type, or don't match a standard type at all.
+- Being able to recognize typical and atypical APIs will help you know what to expect and test for as an API hacker.
+  - Most APIs are self-service, and so the API provider will often let you know the type of API you'll be interacting with.
+- Two API types this book looks at:
+  - RESTful APIs
+  - GraphQL
+
+#### RESTful APIs
+
+- _Representational State Transfer (REST)_ is a set of architectural constraints for applications that communicate using HTTP methods.
+  - APIs that use REST are called RESTful or REST APIs.
+- REST relies entirely on the use of HTTP.
+  - Primarily uses GET, POST, PUT, DELETE, to accomplish CRUD.
+- The 6 constraints of the REST design (these are "shoulds" not "musts"):
+  1. **Uniform interface:** REST APIs should have a uniform interface. The requesting client device should not matter; a mobile device, an IoT device, and a laptop must all be able to access a server in the same way.
+  2. **Client/Server:** REST APIs should have a client/server architecture. Clients are the consumers requesting information, and servers are the providers of that information.
+  3. **Stateless:** REST APIs should not require stateful communications. REST APIs do not maintain state during communication; it is as though each request is the first one received by the server. The consumer will therefore need to supply everything the provider will need in order to act upon the request. This has the benefit of saving the provider from having to remember the consumer from one request to another. Consumers often provide tokens to create a state-like experience.
+  4. **Cacheable**: The response from the REST API provider should indicate whether the response is cacheable. _Caching_ is a method of increasing request throughput by storing commonly requested data on the client side or in a server cache. When a request is made, the client will first check its local storage for the requested information. If it doesn't find the information, it passes the request to the server, which checks its local storage for the requested infromation. If the data is not there either, the request could be passed to other servers, such as database servers, where the data can be retrieved.
+     Making REST APIs cacheable by default is a way to improve overall REST performance and scalability by decreasing response times and server processing power. APIs usually manage caching with the use of headers that explain when the requested information will expire from the cache.
+  5. **Layered System:** The client should be able to request data from an endpoint without knowing about the underlying server architecture.
+  6. **Code on Demand (optional):** Allows for code to be sent to the client for execution.
+- REST is a style rather than a protocol, so each RESTful API may be different.
+  - There may be methods beyond CRUD enabled,
+  - It's own set of authentication requirements.
+  - Subdomains instead of paths for endpoints.
+  - Different rate-limit requirements.
+  - Etc.
+- Organizations may refer to their API as "RESTful" without adhering to the standard.
+
+- Example of a REST API GET request:
+  ```
+  GET /api/v3/inventory/item/pillow HTTP/1.1
+  HOST: rest-shop.com
+  User-Agent: Mozilla/5.0
+  Accept: application/json
+  ```
+- Providers response to the above request:
+
+  ```
+  HTTP/1.1 200 OK
+  Server: RESTfulServer/0.1
+  Cache-Control: no-store
+  Content-Type: application/json
+
+  {
+  "item": {
+    "id": "00101",
+    "name": "pillow",
+    "count": 25
+    "price": {
+  "currency": "USD",
+  "value": "19.99"
+  }
+    },
+  }
+  ```
+
+- The request queries the store's inventory for pillows.
+- The server responds with JSON indicating the item's ID, name, and quantity.
+- If there were an error in the request, the server would respond with an HTTP error code in the 400 range.
+- This request provided all the information it had about the resource "pillow", if the consumer's application only needed the name and value of the pillow, the consumer would need to filter out the additional information.
+
+  - What information returned to the consumer depends on how the API provider has programmed its API.
+
+- Common RESTful API headers:
+
+  - These are identical to HTTP headers but are more commonly seen in REST API request than in other API types (Good for identifying REST APIs).
+  - Headers, naming conventions, and data interchange format used are normally the best ways to identify API type.
+  - **Authorization**:
+    - `Authorization` headers are used to pass token or credentials to the API provider.
+    - Format: `Authorization: <type> <token/credentials>`
+      - ex. `Authorization: Bearer Ab4dtok3n`
+    - Different authorization types:
+      - _Basic_ uses base64-encoded credentials.
+      - _Bearer_ uses an API token.
+      - _AWS-HMAC-SHA-256_ uses an access key and secret key (AWS authorization).
+  - **Content Type**:
+    - `Content-Type` headers are used to indicate the type of media being transferred.
+    - Different from `Accept` headers which state the media type you want to receive.
+    - `Content-Type` headers describe the media you're sending.
+    - Common `Content-Type` headers for REST APIs:
+      - `application/json`: Used to specify JavaScript Object Notation (JSON) as a media type.
+        - JSON is the most common media type for REST APIs.
+      - `application/xml`: Used to specify XML as media type.
+      - `application/x-www-form-urlencoded`: A format in which the values being sent are encoded and separated by an ampersand (&), and an equal sign (=) is used between key/value pairs.
+  - **Middleware (X) Headers**:
+    - `X-<anything>` headers are known as _middleware headers_ serve a multitude of purposes (found outside of APIs as well):
+    - `X-Response-Time` used for indicating how long a response took to process.
+    - `X-API-Key` used as an authorization header for API keys.
+    - `X-Powered-By` used to provide additional information about backend services.
+    - `X-Rate-Limit` used to tell the consumer how many requests they can make within a given time frame.
+    - `X-RateLimit-Remaining` used to tell consumer how many requests remain before the violate rate-limit-enforcement.
+    - Plus a lot more.
+    - These headers can provide a lot of useful information to API consumers and hackers alike.
+
+- Recognizing encoding schemes:
+  - ex. "hAPI hacker" encoded in:
+    - Unicode UTF-8: `\x68\x41\x50\x49\x20\x68\x61\x63\x6B\x65\x72`
+    - Unicode UTF-16: `\u{68}\u{41}\u{50}\u{49}\u{20}\u{68}\u{61}\u{63}\u{6b}\u{65}\u{72}`
+    - base64-encoded: `aEFQSSBoYWNrZXI=`
+
+#### GraphQL
+
+- Short for _Graph Query Language_.
+- GraphQL is a specification for APIs that allow clients to define the structure of the data they want to request from the server.
+- GraphQL is RESTful as it follows the six constraints of REST APIs.
+- Additionally, GraphQL is _query-centric_ because it is structured to function similarly to a database query language (like SQL).
+- To access a GraphQL API you'll typically access the URL where it is hosted and submit an authorized request that contains query parameters as the body of a POST request:
+  ```
+  query {
+    users {
+      username
+      id
+      email
+    }
+  }
+  ```
+  - This query would provide you with the usernames, IDs, and emails of the requested resources.
+  - The response to this may look like:
+  ```
+  {
+    "data": {
+      "users": {
+        "username": "hapi_hacker",
+        "id": 1111,
+        "email": "hapihacker@email.com"
+      }
+    }
+  }
+  ```
+- GraphQL improves on typical REST APIs in several ways:
+  - REST APIs return whatever data the server is programmed to return from an endpoint, nothing more, nothing less.
+  - REST APIs are resource based. Consumers may need to make several requests to get all of the information they require.
+  - Conversely, consumers may only need a specific value from the API provider, and subsequently need to filter out the extraneous data from the REST APIs response.
+  - GraphQL refines this by enabling consumers to use a single request to get the exact data they want.
+  - GraphQL lets consumers request specific fields from a resource.
+  - GraphQL also uses HTTP and typically depends on a single entry point (URL) using the POST method.
+- In a GraphQL request, the body of the POST request is what the provider processes:
+
+  ```
+  POST /graphql HTTP/1.1
+  HOST: graphql-shop.com
+  Authorization: Bearer ab4dtok3n
+
+  {query {
+    inventory (item:"Graphics Card", id: 00101) {
+  name
+  fields {
+  price
+  quantity} } }
+  }
+  ```
+
+- The GraphQL request body begins with the `query` operation which is the equivalent to a GET request and used to obtain information from the API.
+- The GraphQL node we are querying for ("inventory"), is known as the root query type.
+- Nodes, like objects, are made up of fields, similar to key/value pairs in REST.
+
+  - The difference between REST and GraphQL is that we can specify the exact fields we're looking for.
+  - In the above example, we're looking for the "price" and "quantity" fields.
+
+- Response to the above:
+
+  ```
+  HTTP/1.1 200 OK
+  Content-Type: application/json
+  Server: GraphqlServer
+
+  {
+  "data": {
+  "inventory": { "name": "Graphics Card",
+  "fields": [
+  {
+  "price": "999.99"
+  "quantity": 25 } ] } }
+  }
+  ```
+
+- The GraphQL response only returns the provided fields from the request for the specified "Graphics Card".
+  - REST APIs would return something like: item ID, item name, and other superfluous information.
+- GraphQL still functions using CRUD, which may sound confusing because it relies on POST requests.
+- GraphQL uses 3 operations within the POST request to interact with GraphQL APIs:
+  - **query**:
+    - _Query_ is an operation to retrieve data (read).
+  - **mutation**:
+    - _Mutation_ is an operation used to submit and write data (create, update, and delete).
+  - **subscription**:
+    - _Subscription_ is an operation used to send data (read) when an event occurs.
+    - _Subscription_ is a way for GraphQL to listen to live updates from the server.
+- GraphQL uses _schemas_ which are collection of the data that can be queried within the given service.
+  - Having access to a GraphQL schema is similar to having access to a REST API collection.
+  - A GraphQL schema will provide you with the info you need in order to query the API.
+- You can interact with GraphQL using a browser if there is a GraphQL IDE, like GraphiQL in place.
+  - Otherwise, you need a GraphQL client:
+    - Postman
+    - Apollo-Client
+    - GraphQL-Request
+    - GraphQL-CLI
+    - GraphQL-Compose
+
+**Seemingly random info bubble about SOAP p. 37-38**:
+
+#### SOAP: An Action-Oriented API Format
+
+- _Simple Object Access Protocol (SOAP)_ is a type of action-oriented API that relies on XML. SOAP is one of the older web APIs, originally released as XML-RPC back in the late 1990s, so we won't cover it in this book.
+- SOAP works over HTTP, SMTP, TCP, and UDP - It was primarily designed for use over HTTP.
+- When used over HTTP, all requests are made using HTTP POST request.
+- ex. SOAP Request:
+
+  ```
+  POST /Inventory HTTP/1.1
+  Host: www.soap-shop.com
+  Content-Type: application/soap+xml; charset=UTF-8
+  Content-Length: nnn
+
+  <?xml version="1.0"?>
+
+  <soap:Envelope
+  xmlns:soap="http://www.w3.org/2003/05/soap-envelope/"
+  soap:encodingStyle="http://www.w3.org/2003/05/soap-encoding">
+
+  <soap:Body xmlns:m="http://www.soap-shop.com/inventory">
+    <m:GetInventoryPrice>
+      <m:InventoryName>ThebestSOAP</m:Inventoryname>
+    </m:GetInventoryPrice>
+  </soap:Body>
+
+  </soap:Envelope>
+  ```
+
+- ex. SOAP response:
+
+  ```
+  HTTP/1.1 200 OK
+  Content-Type: application/soap+xml; charset=UTF-8
+  Content-Length: nnn
+
+  <?xml version="1.0"?>
+
+  <soap:Envelope
+  xmlns:soap="http://www.w3.org/2003/05/soap-envelope/"
+  soap:encodingStyle:"http://www.w3.org/2003/05/soap-encoding">
+
+  <soap:Body xmlns:m="http://www.soap-shop.com/inventory">
+  <soap:Fault>
+  <faultcode>soap:VersionMismatch</faultcode>
+      <faultstring, xml:lang='en">
+        Name does not match Inventory record
+      </faultstring>
+  </soap:fault>
+  </soap:Body>
+
+  </soap:Envelope>
+  ```
+
+- SOAP API messages are made up for four parts:
+  - The envelope (necessary).
+    - An XML tag at the beginning of the message that signifies that the message is a SOAP message.
+  - The header (necessary).
+    - Can be used to process a message.
+    - `Content-Type` request header lets the SOAP provider know the type of content being sent in the POST request (`application/soap+xml`).
+    - Headers essentially form an agreement between consumer and provider concerning the expectations within the request.
+  - The body (optional).
+    - The primary payload, the data being sent to the application.
+  - The fault (optional).
+    - Used to provide error messaging.
+
+### REST API Specifications
