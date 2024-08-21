@@ -578,3 +578,417 @@ This is all very basic information. Skipped.
     - Used to provide error messaging.
 
 ### REST API Specifications
+
+- _API specifications_, AKA description languages, are frameworks that help organizations design their APIs.
+  - Automatically create consistent human-readable documentation.
+  - Help developers and users know what to expect regarding the API's functionality and results.
+  - Without specifications, it would be much harder to create consistency between APIs.
+    - Consumers would have to learn how each APIs documentation was formatted and adjust their application to interact with each API.
+- With API specifications, consumers can program their application to ingest different specifications and so easily interact with any API using that given specification.
+  - Analogy: Specification are like electrical outlet in a house.
+    - Instead of having a unique electric socket for every appliance, your house has a single consistent format throughout that allows you to plug in (almost) any appliance you want with no hassle.
+    - Specifications are similar, they standardize the interactions to allow for a more "plug and play" experience.
+- _OpenAPI Specification 3.0 (OAS)_, previously known as Swagger, is one of the leading specifications for RESTful APIs.
+  - OAS organizes and manages APIs by allowing developers to describe endpoints, resources, operations, and authentication and authorization requirements (in a standardized form).
+  - Developers can use OAS to create human- and machine-readable API documentation, formatted as JSON or YAML.
+  - Standardized API documentation is good for users and developers.
+- _RESTful API Modeling Language (RAML)_ is another way to consistently generate API documentation.
+  - RAML is an open specification that works exclusively with YAML for document formatting.
+  - Designed was designed to document, design, build, and test REST APIs (similar to OAS).
+  - More info about [RAML](https://github.com/raml-org/raml-spec).
+
+### API Data Interchange Formats
+
+- APIs use several formats to facilitate the exchange of data.
+  - Specifications use these different formats to document APIs.
+  - Some APIs require a specific format (SOAP), others allow the client to specify the format to use in the request and response body.
+
+#### JSON
+
+- _JavaScript Object Notation (JSON)_ is the primary data interchange format we'll use throughout this book - It is widely used for APIs.
+- JSON organizes data in a way that is both human-readable and easily parsable by applications.
+  - Many programming languages can turn JSON into data types they can use.
+- JSON represents objects as key/value pairs separated by commas, within a pair of curly brackets.
+  - ex.
+  ```
+  {
+    "firstName": "James",
+    "lastName": "Lovell",
+    "tripsToTheMoon": 2,
+    "isAstronauth": true,
+    "walkedOnMoon": false,
+    "comment" : "This is a comment",
+    "spacecrafts": ["Gemini 7", "Gemini 12", "Apollo 8", "Apollo 13"],
+    "book": [
+      {
+        "title": "Lost Moon",
+        "genre": "None-fiction"
+      }
+    ]
+  }
+  ```
+  - Everything between the first curly bracket and the last is considered the object.
+  - Within the object are several key/value pairs.
+    - `"firstName": "James"`, `"lastName:" "Lovell"`, etc.
+  - The first entry is the key, and describes the value pair.
+  - The second is the value, and is the data representation of an acceptable data type.
+    - Can be a string, integer, Boolean, Null, array, or another object.
+    - `"book"` is a nested object and contains its own set of key/value pairs.
+  - JSON does not allow inline comments.
+    - Any sort of comment-like communication must take place as a key/value pair like `"comment" : "This is a comment."`
+    - You can also find comments in the API documentation or the HTTP response.
+
+| Type           | Description                                                                                                                | Example                                                                                             |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Strings        | Any combination of characters within double quotes                                                                         | {<br> "Motto":"Hack the planet",<br> "Drink":"Jolt",<br> "User":"Razor"<br> }                       |
+| Numbers        | Basic integers, fractions, negative numbers, and exponenets. Notice that the multiple items are comma-separated.           | {<br> "number_1" : 101,<br> "number_2" : -102,<br> "number_3" : 1.03,<br> "number_4" : 1.0E+4<br> } |
+| Boolean values | Either true or false                                                                                                       | {<br> "admin" : false,<br> "privesc" : true<br> }                                                   |
+| Null           | No Value                                                                                                                   | {<br> "value" : null<br>}                                                                           |
+| Arrays         | An ordered collection of values. Collections of values are surrounded by brackets ([]) and the values are comma-separated. | {<br> "uid" : ["1","2","3"]<br> }                                                                   |
+| Objects        | An ordered set of value pairs inserted between curly brackets ({}). An object can contain multiple key/value pairs.        | {<br> "admin" : false,<br> "key" : "value",<br> "vulnerabilities" : "galore"<br> }                  |
+
+- ex. JSON data from a Twitter API response:
+  ```
+  {
+  "id":1278533978970976256,
+  "id_str":"1278533978970976256",
+  "full_text":"1984: William Gibson published his debut novel, Neuromancer. It's a cyberpunk tale about Henry Case, a washed up computer hacker who's offered a chance at redemption by a mysterous dude named Armitage. Cyberspace. Hacking. Virtual reality. The matrix. Hacktivism. A must read. https:\/\/t.co\/R9hm2LOKQi",
+  "truncated":false
+  }
+  ```
+  - This shows key value pairs with numbers, strings, and booleans.
+
+#### XML
+
+- _Extensible Markup Language (XML)_ format has been around a long time.
+- XML is characterized by the descriptive tags it uses to wrap data.
+- REST APIs can use XML, but it's usually used in SOAP APIs.
+  - SOAP APIs can _only_ use XML.
+- The twitter example above looks like this in XML:
+  ```
+  <?xml version="1.0" encoding="UTF-8" ?>
+  <root>
+      <id>1278533978970976256</id>
+    <id_str>1278533978970976256</id_str>
+    <full_text>1984: William Gibson published his debut novel, Neuromancer. It&#x27;s a cyberpunk tale about Henry Case, a washed up computer hacker who&#x27;s offered a chance at redemption by a mysterous dude named Armitage. Cyberspace. Hacking. Virtual reality. The matrix. Hacktivism. A must read. https://t.co/R9hm2LOKQi </full_text>
+    <truncated>false</truncated>
+  </root>
+  ```
+- XML always begins with a _prolog_ that contains information about the XML version and encoding used.
+- _elements_ are the most basic parts of XML.
+  - An element is any XML tag or information surrounded by tags.
+  - \<id_str>1278533978970976256\<id_str> is an example of one of the elements.
+  - XMl must have a root element (like \<root>) and can contain child elements.
+  - ex. of the child element \<BookGenre>:
+    ```
+    <LibraryBooks>
+      <BookGenre>SciFi</BookGenre>
+    </LibraryBooks>
+    ```
+- Comments in XML are surrounded by two dashes.
+  - `<!--XML comment example-->`
+- Key differences between XML and JSON are JSON's descriptive tags, character encoding, and length.
+  - XML takes much longer to convey the same information, a difference of 565 bytes in the previous examples.
+
+#### YAML
+
+- YAML stands for _YAML ain't markup language_.
+- It was created as a more human- and computer-readable format for data exchange.
+- YAML documents also contain key/value pairs.
+  - Values can be: numbers, strings, Booleans, null values, and sequences.
+- ex.
+  ```
+  ---
+  id: 1278533978970976256
+  id_str: 1278533978970976256
+  full_text: "1984: William Gibson published his debut novel, Neuromancer. It's a cyberpunk tale about Henry Case, a washed up computer hacker who's offered a chance at redemption by a mysterous dude named Armitage. Cyberspace. Hacking. Virtual reality. The matrix. Hacktivism. A must read. https://t.co/R9hm2LOKQi"
+  truncated: false
+  ...
+  ```
+  - Nice isn't it?
+  - YAML documents start with --- and end with ...
+  - Quotes around strings are optional.
+  - URLs don't need to be encoded with backslashes.
+  - YAML uses indentation instead of curly brackets to represent nesting.
+  - Allows comments to begin with #.
+- API specifications are often formatted in JSON or YAML because of the human-readability.
+- More of YAML in action @ [https://yaml.org](https://yaml.org).
+
+### API Authentication
+
+- APIs may allow public access to users without authentication, but when APIs allow access to proprietary or sensitive data, it will use some form of authentication and authorization.
+- The API authentication process should validate that users are who they claim to be, and the auth process should grant them the ability to access the data they are allowed to access.
+- The common principle: Users send information to the provider (API Gateway?) when making a request, and the provider (API Gateway?) must link that info to a user that exists before granting or denying access to a resource.
+- Authentication is the process of providing and verifying an identity.
+  - In a web-app authentication is proving you are a valid user to the server.
+  - Often done through credentials which consist of a unique ID and a password.
+  - If the credentials are acceptable (they match the credentials stored on the server), the web server will create a user session and often issue a cookie to the client.
+
+#### Basic Authentication
+
+- _HTTP basic authentication_ is the simplest form of web authentication.
+  - The user sends their username and password in a header or the body of a request.
+  - The credentials are either sent in plaintext (`username:password`) or are encoded in base64 to save space.
+  - Encoded data is not encrypted, and if captured can easily be decoded.
+- HTTP Basic authentication has no inherent security and completely depends on other security controls.
+  - Can be compromised through capturing HTTP traffic, performing a man-in-the-middle attack, tricking the user into providing their creds through social engineering, and brute-forcing attacks.
+- APIs are often stateless, so those using HTTP basic authentication require the consumer to provide credentials in every request.
+  - If used, API providers will often use basic authentication for the first request, then issue an API key or other token for all other requests.
+
+#### API Keys
+
+- _API keys_ are unique strings that API providers generate and grant to authorize access for approved users.
+  - Users provide this key whenever specified by the provider (API documentation, specifications?).
+  - Typically, the provider (API Gateway?) will require the consumer (user) to pass the key in query string parameters, request headers, body data, or as a cookie when they make a request.
+- ex. An API key included in a query string to a URL: `/api/v1/users?apikey=ju574n3xmpl34p1k3y`
+- ex. An API key included as a header: `"API-Secret": "17813fg8-46a7-5006-e235-45be7e9f2345"`
+- ex. An API key passed in as a cookie: `Cookie: API-Key= 4n07h3r4p1k3y`
+- API keys can be more secure than basic authentication:
+  - Keys can be long, complex, and randomly generated which makes them resistant to brute-forcing.
+  - Can have set expiry dates to limit the length of time they are valid.
+- Associated risks to using API keys:
+  - If the API key is generated using user data, the way in which they are constructed could be guessed, and an attacker could use this info to forge API keys.
+  - Could be exposed in online repositories, left in code comments, intercepted when transferring over non-encrypted connections, stolen through phishing, etc...
+
+#### JSON Web Tokens
+
+- _JSON Web Tokens (JWT)_ are a type of token commonly used in API token-based authentication.
+  - They work like this:
+    - The API user authenticates to the API provider with a username and password.
+    - The provider (authentication server) generates a JWT and sends it back to the user.
+    - The consumer (user) adds the provided JWT to the `Authorization` header in all API requests.
+- JWTs consist of three parts, all of which are base64-encoded:
+  - The header: Includes information about the algorithm used to sign the token.
+  - The payload: The data included within the token (username, time-stamp, issuer).
+  - The signature: Encoded and encrypted message used to validate the token.
+
+_Note: The signature field is not a literal encoding of HMACSHA512 ...; rather, the signature is created by calling the encryption function HMACSHA512(), specified by "alg": "HS512", on the encoded header and payload, and then encoding the result_
+
+| Component | Content                                                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Header    | {<br> "alg": "HS512",<br> "typ": "JWT"<br> }                                                                                        |
+| Payload   | {<br> "sub": "1234567890",<br> "name": "hAPI hacker",<br> "iat": 1516239022<br> }                                                   |
+| Signature | HMACSHA512(<br> &nbsp;&nbsp;base64UrlEncode(header) + "." +<br> &nbsp;&nbsp;base64UrlEncode(payload),<br> SuperSecretPassword<br> ) |
+| JWT       | eyJhbGci...n4jm0Q                                                                                                                   |
+
+- JWTs are secure if implemented properly.
+- Things that make JWTs insecure:
+  - If implemented without encryption.
+  - Chapter 10 for more on hacking JWTs.
+
+#### HMAC
+
+- _Hash-based message authentication code (HMAC)_ is the primary API authentication method used by Amazon Web Services (AWS).
+- When using HMAC the provider creates a secret key and shares it with the consumer (user).
+  - When a consumer (user) interacts with the API, an HMAC hash function is applied to the consumer's (user's) API request data and secret key.
+  - The resulting hash (message digest) is added to the request and sent to the provider (web server, API Gateway).
+  - The provider calculates the HMAC, as the user did, by running the message and key through the hash function.
+    - If the users hash value and the servers hash value are the same, then the server determines that the user is authorized to make the request.
+    - If they don't match, it would indicate the user's key is incorrect of the message was tampered with.
+- The level of security of the message digest depends on the cryptographic strength of the hash function and secret key.
+  - Stronger hash mechanisms generally produce longer hashes.
+- You may notice some applications using HMAC-SHA1 or HMAC-MD5.
+  - This is not the same as using SHA1 or MD5 which have known vulnerabilities.
+  - As of the writing, both HMAC-MD5 and HMAC-SHA1 are considered (mostly) secure. They are both not recommended for use despite not being easily exploited.
+  - Use SHA-256 or SHA_512 as they are cryptographically stronger.
+- The security of HMAC depends on keeping the secret key private.
+- The decision of which hash function to use is made by comparing the organizations priorities between performance and security.
+  - More secure functions are slower.
+
+#### OAuth 2.0
+
+- _OAuth 2.0 (OAuth)_ is an authorization standard that allows different services to access each other's data. often using APIs to facilitate the service-to-service communication.
+- ex. If you automatically share your Twitter (X) tweets on LinkedIn, Twitter would be the service provider and LinkedIn would be the application or client.
+  - To accomplish this, LinkedIn will need authorization to access your Twitter information.
+  - Both twitter and LinkedIn implement OAuth, and so you can go to LinkedIn and authorize Twitter.
+    - Doing this will send you to `api.twitter.com` to authorize LinkedIn to access your Twitter account.
+  - Once authorized, Twitter generates a limited, time-based access token for LinkedIn.
+  - LinkedIn then provides that token to Twitter to post on your behalf.
+    - You do not need to have LInkedIn your Twitter credentials.
+- The process looks like this:
+  1. LinkedIn sends an authorization request to the resource owner (Twitter).
+  2. Twitter sends an authorization grant back to LinkedIn.
+  3. LinkedIn sends the authorization grant to Twitter's authorization server.
+  4. Twitters authorization server sends an access token back to LinkedIn.
+  5. LinkedIn sends the access token to Twitters resource server.
+  6. Twitters resource server sends the protected resource back to LinkedIn.
+- OAuth is one of the most trusted forms of API authorization.
+  - OAuth adds security to the authorization process, but it also increases the attack surface.
+  - Security flaws, however, are most often due to how the API provider implements OAuth than how OAuth itself works.
+  - Poor implementation of OAuth can lead to token injection, authorization code reuse, cross-site request forgery, invalid redirection, and phishing.
+
+#### No Authentication
+
+- It is sometimes perfectly acceptable for an API to have no authentication.
+- If an API doesn't handle sensitive data and only provides publicly available information, the provider could make the case that no authentication is necessary.
+
+### APIs in Action: Exploring Twitter's API
+
+1. Once you've entered a URL into your browser, the browser submits an HTTP GET request to the web server at `twitter.com`
+
+```
+GET / HTTP/1.1
+Host: twitter.com
+User-Agent: Mozilla/5.0
+Accept: text.html
+--snip--
+Cookie: [...]
+```
+
+2. Twitter web app receives the request and responds to the GET request by issuing a successful 200 OK response:
+
+```
+HTTP/1.1 200 OK
+cache-control: no-cache, no-store, must-revalidate
+Connection: close
+content-security-policy: content-src 'self'
+content-type: text/html; charset=utf-8
+server: tsa_a
+--snip--
+x-powered-by: Express
+x-response-time: 56
+
+<!DOCTYPE html>
+<html dir="ltr" lang="en">
+--snip--
+```
+
+- This response header contains the status of the HTTP connection, client instructions, middleware information, and cookie-related information.
+
+  - _Client instructions_ tell the browser how to handle the requested information, such as caching data, the content security policy, and instructions about the type of content that was sent.
+
+- ex. A user looks up "hacking" using twitter's search bar.
+  - Starts by issuing a POST request to Twitter's API - Twitter uses APIs to distribute requests and seamlessly provide requested resources to many users.
+  ```
+  POST /1.1/jot/client_event.json?q=hacking HTTP/1.1
+  Host: api.twitter.com
+  User-Agent: Mozilla/5.0
+  --snip--
+  Authorization: Bearer AAAAAAAAAAAAAAA...
+  --snip--
+  ```
+  - The Twitter API responds with JSON containing the search results, which includes tweets and information about each tweet such as user mentions, hashtags, and post times.
+  ```
+  "created_at": [...]
+  "id": 1278533978970976256
+  "id_str": "1278533978970976256"
+  "full-text": "1984: William Gibson published his debut novel..."
+  "truncated": false,
+  --snip--
+  ```
+  - Seeing as the Twitter API adheres to CRUD, API naming conventions, tokens for authorization, _application/x-www-form-urlencoded_, and JSON as a data interchange makes it pretty clear that this API is a RESTful API.
+
+## Chapter 3: Common API Vulnerabilities
+
+- Chapter contains most of the vulnerabilities included in the Open Web Application Security Project (OWASP) API Security Top 10 list, plus information disclosures and business logic flaws.
+
+### Information Disclosure
+
+- When an API and its supporting software share sensitive information with unprivileged users it has a _information disclosure_ vulnerability.
+- Places to look:
+  - API responses, code repositories, search results (google dorking), news, social media, the targets website, API documentation, public API directories.
+- What to look for:
+  - Any information that attackers can leverage to exploit the application.
+  - ex. A site using the WordPress API may unknowingly share user information with anyone who navigates to the API path _/wp-json/wp/v2/users_ which returns all of the WordPress usernames (or slugs).
+  - Request: `GET https://www.example.com/wp-json/wp/v2/users`
+  - Might return: `[{"id":1, "name":"Administrator", "slug":"admin"}],` as well as others like: `[{"id":2, "name":"Vincent Valentine", "slug":"Vincent"}]`.
+  - Once attackers have some valid usernames, they can attempt brute-forcing, credential-stuffing, or password-spraying attacks.
+- Error messaging can also lead to information disclosures.
+  - A classic attack using error messaging would be to brute for usernames from a list with a known incorrect password.
+    - If the error message returns something like "Username doesn't exist" when an invalid username is used, and "Incorrect Password" when a valid username is used with an incorrect password, an attacker can find valid usernames using a username list and a tool like burpsuite to quickly submit the usernames then sort for response length to find valid usernames.
+- The author doesn't do a great job of explaining this, but essentially I think he wanted to say: Finding software names and versions, operating system name and version, system logs (wow, must be nice), and searching them for known vulnerabilities is a common attack vector for hackers. Having this information be publicly discoverable sets up the application for attacks if they aren't up to date on patching and a known vulnerability exists for their software suite.
+- API responses can reveal information within headers, parameters, and verbose errors.
+- Other good sources of information are API documentation and resources gathered during recon.
+
+### Broken Object Level Authorization
+
+- One of the most prevalent vulnerabilities in APIs is _broken object level authorization (BOLA)_.
+- Occur when an API provider allows an API consumer access to resources they are not authorized to access.
+- If no object-level access controls exist, no checks will be conducted to ensure the users can only access their own resources.
+  - If missing, User A will be able to request User B's resources.
+- APIs user a value such as names or numbers to identify various objects.
+  - When you discover an object ID, you should test it to see if you can interact with the resources of other users when unauthenticated and when authenticated as a different user.
+- ex. Sending a GET request to access the user Cloud Strife's user information:
+  - `https://bestgame.com/api/v3/users?id=5501`
+  - From which we receive:
+  ```
+  {
+    "id": "5501",
+    "first_name": "Cloud",
+    "last_name": "Strife",
+    "link": "https://www.bestgame.com/user/strife.buster.97",
+    "name": "Cloud Strife",
+    "dob": "1997-01-31",
+    "username": "strife.buster.97"
+  }
+  ```
+  - This is no problem if you're authorized to access Cloud's information, but if you are able to access another users information in the same way without authentication it is a big problem.
+  - An attacker could start iterating from the known users user ID to see if they can bring up other users information.
+  - `https://bestgame.com/api/v3/users?id=5502` and it returns some other users information without authenticating to that user with:
+  ```
+    "id": "5502",
+    "first_name": "Zack",
+    "last_name": "Fair",
+    "link": "https://www.bestgame.com/user/shinra-number-1",
+    "name": "Zack Fair",
+    "dob": "2007-09-13",
+    "username": "shinra-number-1"
+  ```
+  - In this case Cloud has discovered a BOLA.
+- Detecting patterns within API paths and parameters should help you to predict other potential resources.
+  - Examples:
+  - `GET /API/resource/1`: 1 is something to test.
+  - `GET /user/account/find?user_id=15`: Test on the 15.
+  - `POST /company/account/Apple/balance`: Try replacing Apple with Google, or other online payment providers.
+  - `POST /admin/pwreset/account/90`: Mess with the 90 value to see what happens.
+
+### Broken User Authentication
+
+- _Broken user authentication_ refers to _any_ weakness within the API authentication process.
+- This vulnerability occurs when an API provider either doesn't implement an authentication protection mechanism or implements a mechanism incorrectly.
+- API authentication can be complex systems that include several processes, which means a larger attack surface.
+- To remain stateless (a requirement of RESTful APIs), APIs often require a registration process in order to issue a unique token that can be included with each request made to the API to demonstrate they're authorized to make such requests.
+  - As a result, the registration process, token handling, and the system used to generate the token become potential targets for attack.
+  - To determine if the token generation process is weak, you could collect a sampling of tokens and analyze them for similarities.
+    - If the token generation process doesn't have sufficient entropy, you may be able to forge your own or hijack someone else's.
+  - Token handling could include the storage of tokens, the method of transmitting tokens across a network, the presence of hardcoded tokens, etc.
+    - Look for hardcoded tokens in JavaScript source files or capture them as you analyze the web application.
+    - Once you've captured a token, you can use it to gain access to previously hidden endpoints or bypass detection.
+  - The registration system will generally have features like password reset, multifactor authentication features, etc.
+    - These are all features that should be tested for vulnerabilities.
+    - ex. A password reset feature requires your email and a six-digit code to reset your password.
+      - If the API doesn't restrict the amount of requests you can make before locking you out, you could brute force the six-digit code within one million requests. If the code was only four-digits, you could brute force it within 10,000 requests.
+      - This is not a large amount of requests when you use a tool or script to submit the codes.
+- Watch for API keys, tokens, and credentials used in URLs, a lack of rate-limiting restrictions when authenticating, and verbose error messages.
+- GitHub is a treasure trove of accidentally submitted or hard coded API keys. (Look at Bug Bounty Boot Camp for way to search github for these)
+- Because RESTful APIs are stateless, finding exposed API keys is equivalent to finding a username and password.
+
+### Excessive Data Exposure
+
+- _Excessive data exposure_ is when an APi endpoint responds with more information than is needed to fulfill a request.
+- This often happens when the API provider expects users to filter results.
+  - The API provider responds to requests for X by sending all the information in the object that X is located in.
+- ex. You request your user information with `GET /api/v3/account?name=Cloud+Strife` and get back the response:
+
+  ```
+  {
+    "id": "5501",
+    "fist_name": "Cloud",
+    "last_name": "Strife",
+    "privilege": "user",
+        "representative": [
+
+        "name": "Don Corneo",
+        "id": "2003"
+        "email": "dcorn@gmail.com",
+        "privilege": "super-admin"
+        "admin": true
+        "two_factor_auth": false,
+        }
+  ```
+
+  - A single user's account information was requested, and the provider responded with information about the person who created the account as well - including some juicy information about the account.
+
+- These can be very juicy and require no real effort to access potentially sensitive information just by reviewing the response from the API.
+
+### Lack of Resources and Rate Limiting
