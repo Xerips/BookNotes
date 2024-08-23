@@ -992,3 +992,281 @@ x-response-time: 56
 - These can be very juicy and require no real effort to access potentially sensitive information just by reviewing the response from the API.
 
 ### Lack of Resources and Rate Limiting
+
+- _Lack of resources and rate limiting_ are the more important vulnerabilities to test for.
+- Rate limiting plays an important role in monetization and availability.
+  - Effective rate limiting ensure you won't be vulnerable to DoS attacks by ensuring your resources do not become overloaded.
+  - Bypassing rate limits can also allow attackers to skip pay walls and essentially steal resources.
+- If rate limiting is functioning correctly, you should receive a response indicating that you've hit your request limit.
+  - This is often done with an HTTP 429 status code.
+- Things to try while testing:
+  - Can you bypass rate limits by adding or removing a parameter?
+  - Using a different client?
+  - Altering your IP address?
+
+### Broken Function Level Authorization
+
+- _Broken function level authorization (BFLA)_ is a vulnerability where a user of one role or group is able to access the API functionality of another role or group.
+- API providers will often have different rolls for different types of accounts:
+  - Public users
+  - Merchants
+  - Partners
+  - Administrators
+  - etc.
+- A BFLA is present if you are able to use the functionality of another privilege level or group.
+  - Could be a lateral move, where you use the functions of a similarly privileges group
+  - Could be privilege escalation where you can use the functions of a more privileged group
+  - Looking at functions that deal with sensitive information, resources that belong to another group, and administrative functionality are good places to look for high yield bounties.
+- BFLA is similar to BOLA, except instead of an authorization problem involving accessing resources, it is an authorization problem for performing actions.
+  - ex. Banking API example BOLA:
+    - A BOLA is present in the API, you might be able to access the information of other accounts, such as payment histories, usernames, email addresses, and account numbers.
+    - A BFLA is present in the API, you might be able to transfer money and actually update the account information.
+    - BOLA is about unauthorized _access_, BFLA is about unauthorized _actions_.
+- If an API has different privilege levels or roles, it may use different endpoints to perform privileged actions.
+  - ex. Of differently permissioned endpoints:
+    `/{user}/account/balance`
+    `/admin/account/{user}`
+  - If the application doesnt have access controls implemented correctly, we'll be able to perform administrative actions from a non-admin account to the admin endpoint.
+- If the APIs functionality is based off of HTTP request methods, and the provider doesn't restrict the HTTP methods, a consumer may be able to make unauthorized requests with a different method.
+
+  - This would be a BFLA.
+
+- When hunting for BFLA, look for functionality like:
+  - Altering user accounts
+  - Accessing user resources
+  - Accessing restricted endpoints
+  - Can you add yourself to another user group?
+  - If you can, can you access their data once added?
+  - Find administrative API documentation and send requests as an unprivileged user to test admin functions and capabilities.
+    - If you get 401 Unauthorized or 403 Forbidden responses, it indicates that access controls are in place.
+
+### Mass Assignment
+
+- _Mass assignment_ occurs when an API consumer includes more parameters in their requests than the application intended and the application adds these parameters to code variables or internal objects.
+  - In these attacks, a consumer may be able to edit object properties or escalate privileges.
+- ex. An API is called to create an account with parameters for "User" and "Password":
+  ```
+  {
+  "User": "scuttleph1sh",
+  "Password": "GreatPassword123"
+  }
+  ```
+  - You read the API docs and find there is a key called "isAdmin", use a proxy to add in the found key with value true:
+  ```
+  {
+  "User": "scuttleph1sh"
+  "Password": "GreatPassword123"
+  "isAdmin": true
+  }
+  ```
+  - If the request is not sanitized and the key value pair is accepted, a mass assignment exists.
+    - On the backend, the vulnerable web app will add the key/value attribute {"isAdmin": true} to the user object and escalate the privileges of the account to administrator.
+- Find mass assignment vulnerabilities by finding parameters in API documentation and then adding those parameters to a request.
+- Parameters to look for:
+  - Params involved in user account properties.
+  - Critical functions
+  - Administrative actions.
+  - Intercepting API requests and responses could also reveal parameters worthy of testing.
+  - Fuzz for undocumented parameters.
+
+### Security Misconfigurations
+
+- \*Security misconfigurations include all the mistakes developers could make within the supporting security configurations of an API.
+- Severe misconfigurations lead to sensitive information disclosures or even complete system takeover.
+- Unpatched vulnerabilities are considered security misconfigurations and can often be exploited with public exploits for partial or full system take over.
+- **Includes**:
+
+  - **Unpatched vulnerabilities**
+  - **Misconfigured headers**
+    - Can lead to sensitive information disclosure, downgrade attacks, and cross-site scripting attacks.
+    - It is common for additional services that are configured to work with the API to add headers to requests for metrics. Those headers also provide extra information to the researcher/attacker.
+  - **Misconfigured transit encryption**
+    - All APIs providing sensitive information to consumers should use _Transport Layer Security (TLS)_.
+    - If data is not encrypted in transit API users may pass sensitive information across the network and cleartext causing vulnerability to man-in-the-middle attacks.
+      - The attacker would need to have access to the network and use a network protocol analyzer like wireshark, but it's possible.
+  - **The use of default accounts and creds**
+    - If there are default accounts that can be accessed with default creds, and they are know, an attacker could takeover these accounts and use what ever permissions they are provisioned with.
+  - **The acceptance of unnecessary HTTP methods**
+    - Increased risk of the application not handling these methods properly and leading to unintended behavior.
+  - **Lack of input sanitization**
+    - Can allow for malicious payloads to be uploaded that are either automatically executed, or executed by a user.
+    - Can also lead to unexpected behavior on the part of the application.
+  - **Verbose error messaging**
+
+- ex. Headers for extra information about the API:
+
+  ```
+  HTTP/ 200 OK
+  --snip--
+  X-Powered-By: VulnService 1.11
+  X-XSS-Protection: 0
+  X-Response-Time: 566.43
+  ```
+
+  - X-Powered-By headers reveal backend technology. Search these technologies and versions for known vulnerabilities.
+  - X-XSS-Protection header indicates there is XSS protection on the API, the 0 value indicates that this protection is turned off.
+  - X-Response-Time header is middleware that provides usage metrics.
+
+    - If not configured correctly, it can become a side channel used to reveal existing resources.
+    - X-Response-Time has a consistent response time for nonexistent records, but increases its response time for existing records.
+    - ex.
+
+      ```
+      HTTP/UserA 404 Not Found
+      --snip--
+      X-Response-Time: 25.5
+
+      HTTP/UserB 404 Not Found
+      --snip--
+      X-Response-Time: 25.5
+
+      HTTP/UserC 404 Not Found
+      --snip--
+      X-Response-Time: 510.00
+      ```
+
+    - This can enable you to brute force user accounts based on response time.
+
+- You can detect a number of these security misconfigurations with web app vuln scanners like Nessus, Qualys, OWASP ZAP, Nikto, etc.
+  - These scanners automatically check the web server version information, headers, cookies, transit encryption configuration, and parameters for misconfigurations.
+  - Manually inspect Headers, SSL certificates, cookies, and parameters.
+
+### Injections
+
+- _Injection flaws_ exist when a request is passed to the API's supporting infrastructure and the API provider doesn't filter the input to remove unwanted characters (_input sanitization_).
+  - This results in the infrastructure treating data from the request as code to execute.
+  - Leads to: SQL injection, NoSQL injection, system command injection (RCE).
+  - The API delivers your unsanitized payload to the underlying operating system running the application, or the database.
+- Verbose error messaging, HTTP response codes, and unexpected API behavior can help determine if you've found an injection flaw.
+- ex. SQL injection
+
+```
+POST /api/v1/register HTTP 1.1
+Host: example.com
+--snip--
+{
+"Fname": "hAPI",
+"Lname": "Hacker",
+"Address": "' OR 1=0--",
+}
+```
+
+- If this request returns a response with something like "Error: You have an error in your SQL syntax..." it would indicate that you're communicating directly with the database and the SQL injection was successful.
+
+- ex. API GET request to a weak query parameter. Query parameter passes any data in the query portion of the request directly to the underlying system without sanitization:
+  `GET http://10.10.78.181:5000/api/v1/resources/books?show=/etc/passwd`
+  - If the request returns the contents of /etc/passwd
+
+### Improper Asset Management
+
+- _Improper asset management_ takes place when an organization exposes APIs that are either retired or still in development.
+  - Old API versions are more likely to contain vulnerabilities as they are no longer being maintained.
+  - APIs that are still in development may contain developer backdoors, unimplemented security features, verbose error messaging, and bypasses used for debugging and development.
+- **Can lead to**:
+  - Excessive data exposure
+  - Information disclosure
+  - Mass assignment
+  - Improper rate limiting
+  - API injections
+- **To find them look for**:
+  - Out dated API documentation
+    - If the API documentation hasn't been updated along with the API endpoints, the outdated docs could point to portions of the API that are no longer supported.
+    - Look for previous versions by changing endpoints /v1/, /v2/, /v3/, /v4/ paths or look for /alpha/, /beta/, /test/, /uat/, or /demo/.
+  - Changelogs
+    - Changelogs may reveal why previous versions are no longer supported, if you can access older version the changelogs are a great place to look for vulnerabilities.
+  - Version history on repositories
+- Fuzzing and brute-forcing are great ways to find outdated endpoints that are improper asset management vulnerabilities.
+
+### Business Logic Vulnerabilities
+
+- _Business logic vulnerabilities_ are intended featurs of an application that attackers can use maliciously.
+- These vulnerabilities usually come from the assumption that API consumers will follow directions, be trustworthy, or only use the API in a certain way.
+  - (IMO) These also come from organizations prioritizing business features over security or wanting the application to be fast and powerful without investing the proper amount of development or investment in security.
+- Ex. Experian partner API leak, 2021:
+  - An Experian partner was authorized to use the Experian API to perform credit checks.
+  - The partner added the APIs credit check functionality to their website so their customers could use the API, but with partner level permissions.
+  - A request could be intercepted while performing a credit check using the partners site and the name and address fields could be manipulated to return any individuals credit score and credit risk factors of any name and address put into it.
+  - Experian trusted the partner not to expose the API.
+- Credentials, like API keys, API tokens, and passwords are constantly being stolen and leaked by 3rd parties who use the Providers APIs.
+- Search the API documentation for signs of business logic vulnerabilities by looking for statements that resemble the following:
+  - "Only use feature X to perform function Y."
+  - "Do not do X without endpoint Y."
+  - "Only admins should perform request X."
+  - Make sure to disrespect these requests to test for the presence of security controls.
+- Some APIs assume you will only use a web browser to access their API, and intercepting the requests with a proxy will immediately show weaknesses or leaked information.
+- ex.
+  ```
+  POST /api/v1/login HTTP 1.1
+  Host: example.com
+  --snip--
+  UserID=hapihacker&password=arealpassword!&MFA=true
+  ```
+  - There is a chance you could bypass MFA by setting its value to false.
+- Testing Business logic flaws can be challenging because each business is unique and they can be resistant to automated scanners because the flaws are part of the APIs intended use.
+
+## Chapter 4: Your API Hacking System
+
+### Kali Linux
+
+The Author uses Kali Linux, and suggests looking up a guide to install it.
+
+### Analyzing Web Apps with DevTools
+
+- To use DevTools in Chrome, or in a chromium based browser hit `CTRL+SHIFT+I` or `F12`.
+- Under the **Network panel**, you should be able to see various resources requested from APIs.
+  - This is a good place to start when looking for APIs to test.
+  - Use this panel to drill down into each request to see the request method that was used, the response status code, the headers, and the request body. To do this, just click the name of the URL you're interested in under the name column.
+    - This opens up a panel on the right side of the DevTools.
+    - From here you can review the request that was made under the Headers tab, and see the servers response under the Response Tab.
+- Under the **Sources panel**, you can inspect the source files being used by the app.
+  - In CTFs and sometimes in the wild, you may find API keys or other hard-coded secrets here.
+  - Has a strong search functionality that will help you discover the inner workings of the application.
+- Under the **Console panel**, you will be able to run JavaScript and debugging commands.
+  - Use it to detect errors, view warnings, and execute commands.
+- The above panels are what we will use most often.
+- You can use the **Performance panel** to observe at what point a web application interacts with an API.
+  - You can use this panel to watch for API interactions being triggered and then correlate that with actions you've taken on the page.
+    - This can help you understand what the web application is using an API for.
+- DevTools helps you gather information about a web application. And the more information you have before attacking and API, the more likely you are to find something.
+- Read more at: [https://developers.google.com/web/tools/chrome-devtools](https://developers.google.com/web/tools/chrome-devtools)
+
+| Panel       | Function                                                                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Elements    | Allows you to view the current page's CSS and Document Object Model (DOM), which enables you to inspect the HTML that constructs the web page. |
+| Console     | Provides you with alerts and lets you interact with the JavaScript debugger to alter the current web page.                                     |
+| Sources     | Contains the directories that make up the web application and the content of the source files.                                                 |
+| Network     | Lists all the source file requests that make up the client's perspective of the web application.                                               |
+| Performance | Provides a way to record and analyze all the events that take palce when loading a web page.                                                   |
+| Memory      | Lets you record and analyze how the browser is interacting with your system's memory.                                                          |
+| Application | Provices you with the application manifest, storage items (like cookies and session information), cache, and background services.              |
+| Security    | Provides insight regarding the transit encryption, source content origins, and certificate details.                                            |
+
+### Capturing and Modifying Requests with Burp Suite
+
+- Burp Suite, everyone is using it.
+- _Spidering/Web Crawling_: Burpsuite (and ZAP - some say ZAP is better for this), will do spidering which means that Burp Suite is scanning the HTML of the webpage for hyperlinks in order to map out the website.
+  - This will not find hidden paths or paths that do not have links found within the web pages.
+    - Kiterunner is a tool that will perform directory brute-force attacks to try and find hidden paths.
+- Burp Suite professional is a huge upgrade from Burp Suite Community. The free edition will throttle your attacks making them so slow they're unrealistic to attempt. There is also a huge increase in powerful features like the Collaborator server that will allow you to conduct out-of-band attacks.
+  - Author says buy Burp Suite Pro as soon as you get your first bounty, or as soon as you can convince your employer to get it. Good advice.
+  - Once you're ready to start finding bounties, do the free 30 day trial of Burp Pro and use it to pay for the yearly subscription!
+
+#### Setting Up FoxyProxy
+
+- Foxy Proxy has been dumped on lately for not working properly and not being updated or maintained very well. When the author wrote the book, it was still the go to for proxy switching, but times they be a changing.
+- I'm trying out Proxy SwitchyOmega, but there are a few other options out there if you search about.
+- You can also set up and manage your proxies through the settings page of your web browser. Just search Proxy and you should be able to find them and configure them. The down side: you will need to do this every time you want to turn the proxy on and off or change your proxy settings.
+- Proxy settings you want for Burp:
+  127.0.0.1 for proxy address
+  Port 8080 (Burps Default)
+
+#### Adding the Burp Suite Certificate
+
+1. Start Burp
+2. Open your browser of choice (won't work with brave browser)
+3. Turn on your proxy with the above settings (local host, 8080).
+4. Navigate to http://burpsuite
+5. Click CA Certificate in the top right of the screen to download the certificate.
+6. In Chrome open settings, search for certificates, More > Manage Certificates > Authorities > import the certificate, expand to "all certificates" if you don't see the one that's saved.
+
+Instead of setting up your browser to user Burp Suite, which you may not be able to do easily if you're sandboxing your web browser or just don't want the hassle,

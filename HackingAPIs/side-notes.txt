@@ -1,0 +1,9 @@
+Vuln Scanners recommended in book for APIs:
+- Nessus
+- Qualys
+- ZAP
+- Nikto
+
+To use with Burp Suite:
+Kiterunner
+Proxy SwitchyOmega
