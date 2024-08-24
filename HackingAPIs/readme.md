@@ -1269,4 +1269,267 @@ The Author uses Kali Linux, and suggests looking up a guide to install it.
 5. Click CA Certificate in the top right of the screen to download the certificate.
 6. In Chrome open settings, search for certificates, More > Manage Certificates > Authorities > import the certificate, expand to "all certificates" if you don't see the one that's saved.
 
-Instead of setting up your browser to user Burp Suite, which you may not be able to do easily if you're sandboxing your web browser or just don't want the hassle,
+- Instead of setting up your browser to user Burp Suite, which you may not be able to do easily if you're sandboxing your web browser, using an unsupported browser like brave, or just don't want to mess with switching proxies on and off, you can use the built in Burp Suite browser by going to the proxy tab once you've started burp, then on the far right you can click the Open browser button.
+- This browser is well integrated into burp and also allows you to add profiles or extensions.
+- It's not easy to find from their homepage, but you can read the Burp Suite documentation at [https://portswigger.net/burp/documentation/](https://portswigger.net/burp/documentation/).
+
+#### Navigating Burp Suite
+
+- This section goes through the different tabs inside Burp Suite.
+- If you're not already familiar you should read the docs.
+
+#### Intercepting Traffic
+
+- How to use the intercept function.
+
+#### Altering Requests with Intruder
+
+- How to use the Add and clear functions and selecting different attacks.
+
+#### Extending the Power of Burp Suite
+
+- One of the major benefits of Burp Suite is that you can install custom extensions.
+- Notable extensions:
+  - AUTORIZE:
+    - An extension that helps automate authorization testing, particularly for BOLA vulnerabilities. You can add the tokens of UserA and UserB accounts and then perform a bunch of actions to create and interact with resources as UserA.
+    - Can automatically attempt to interact with UserA's resources with the UserB account.
+    - Highlights any interesting requests that may be vulnerable to BOLA.
+  - JSON Web Tokens:
+    - Helps you dissect and attack JSON Web Tokens.
+  - InQL Scanner:
+    - Aids in attacks against GraphQL APIs.
+  - IP Rotate:
+    - Allows you to alter the IP address you are attacking from to indicate different cloud hosts in different regions.
+    - Very useful against APIs that block attacks based on IP addresses.
+  - Bypass WAF:
+    - Adds some basic headers to your requests in order to bypass some web application firewalls (WAFs).
+    - Some WAFs can be tricked by the inclusion of certain IP headers in the request.
+    - WAF Bypass save you from manually adding headers such as X-Originating-IP, X-Forwarded-For, X-Remote-IP, and X-Remote-Addr.
+    - These headers normally include an IP address and you can specify an address that you believe to be permitted, such as the target's external IP address, or an address you suspect to be trusted.
+
+### Crafting API Requests in Postman, an API Browser
+
+- Postman functions like a web browser for APIs.
+- It was originally created as a REST API client, it now has all sorts of capabilities for interacting with REST, SOAP, and GraphQL.
+  - Creates HTTP requests, receives responses, scripting capability, ability to chain requests together, creating automated testing, and managing API documentation.
+- We will use Postman for sending API requests to the target server, rather than Firefox or Chrome.
+
+#### Installation
+
+- The author suggests the following method for installing Postman on Kali Linux:
+  `sudo wget https://dl.pstmn.io/download/latest/linux64/ -O postman-linux-x64.tar.gz`
+  `sudo tar -xvzf postman-linux-x64.tar.gz -C /opt`
+  `sudo ln -s /opt/Postman/Postman /usr/bin/postman`
+- If you're running Arch linux (I use arch, btw), you can follow the same method, or use the AUR with an AUR helper like yay.
+  - Benefit of this is that you can update the application through yay by running `yay -Syu`.
+  - Make sure you download the right version. There were multiple orphaned and outdated versions of Postman when I ran `yay -Ss postman`.
+    - Look for aur/postman-bin <the current version of postman>
+    - Yay does a good job of letting you know what's out dated or Orphaned, so pay attention when you search for the package and don't download packages without first searching them.
+  - **Tip:** If you're using a combination of pacman and yay to install packages, create an "update" alias to run yay for system updates. Yay will update both your pacman packages and your aur packages.
+- Once you have it installed, open the application and sign up for a free account.
+
+#### The Request Builder
+
+- When you click the + in the main window of Postman, it will open up a new tab.
+  Request Builder:  
+  [!request-builder](https://github.com/Xerips/BookNotes/tree/main/HackingAPIs/Request-builder.png)
+- The request builder contains several tabs useful for precisely constructing the parameters, headers, and body of a request.
+- **Params tab**:
+  - Here you can add query and path parameters to a request.
+  - Allows you to enter in various key/value pairs along with a description of those parameters.
+  - Leverage the power of variables when creating a request.
+    - If you import an APi and it contains a variable like `:company` in `http://example.com/:company/profile`, Postman will automatically detect this and allow you to update the variable to a different value, such as the actual company name.
+- **Authorization tab**:
+  - Includes many standard forms of authorization headers for you to include in your request.
+  - If you've saved a token in an environment, you can select the type of token and use the variable's name to include it.
+  - Hover your mouse over a variable name and you can see the associated credentials.
+  - Several authorization option are available under the Type field that wil help you automatically format the authorization header.
+  - Authorization types include several expected option such as no auth, API key, Bearer Token, and Basic Auth.
+  - You can use the authorization that is set for the entire collection by selecting **inherit auth from parent**.
+- **Headers tab**:
+
+  - Includes the key and value pairs required for certain HTTP requests.
+  - Postman has some built-in functionality to automatically create necessary headers and to suggest common headers with preset options.
+
+- In Postman, values for parameters, headers, and parts of body can be added by entering information within the Key column and the corresponding Value column
+  - Several headers with automatically be created, but you can add your own headers when necessary.
+- Within the keys and values, you also have the ability to use collection variables and environmental variables.
+- The request builder can also run pre-request scripts, which can chain together different requests that depend on each other.
+  - If request 1 issues a resource value that is needed for the following request, you can script that resource value to automatically be added to request 2.
+- You can use several panels to craft proper API requests and review responses.
+- Once you've crafted your request, the response will show up in the response panel.
+  - You can set the response panel either to the right or below the request panel, switch between single-pane and split-pane views with `CTRL+ALT+V`.
+
+| Panel               | Purpose                                                                                                                                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request             |                                                                                                                                                                                                                                                                 |
+| HTTP request method | The request method is found to the left of the request URL bar. It will also support COPY, LINK, UNLINK, PURGE, LOCK, UNLOCK, PROPFIND, and VIEW - Once you type these into the request method drop down, they will be available to select from the drop down.  |
+| Body                | Allows for adding body data to the request, which is primarily used for adding or updating data when using PUT, POST, or PATCH.                                                                                                                                 |
+| Body options        | Body options are the format of the response. These are found below the Body tab when it is selected. The options currently include none, form-data, x-www-form-urlencoded, raw, binary, and GraphQL. These options let you view response data in various forms. |
+| Pre-request script  | JavaScript-based scripts that can be added and executed before a request is sent. This can be used to create variables, help troubleshoot errors, and change request parameters.                                                                                |
+| Test                | This space allows for writing JavaScript-based tests used to analyze and test the API response. This is used to make sure the API responses are functioning as anticipated.                                                                                     |
+| Response            |                                                                                                                                                                                                                                                                 |
+| Response body       | The body of the HTTP response. If Postman were a typical web browser, this would be the main window to view the requested information                                                                                                                           |
+| Cookies             | This shows all the cookies, if any, included with the HTTP response. This tab will include information about the cookie type, cookie value, path, expiration, and cookie security flags.                                                                        |
+| Headers             | This is where all the HTTP response headers are located.                                                                                                                                                                                                        |
+| Test results        | If you created any tests for your request, this is where you can view the results of those tests.                                                                                                                                                               |
+
+#### Environments
+
+- An _environment_ provides a way to store and use the same variables across APIs.
+- An _environment variable_ is a value that will replace a variable across an environment.
+- ex. You're attacking a production API but discover a _test_ version of the production API as well; You'll likely want to use an environment to share values between your requests to the two APIs.
+  - This is valuable because there is a chance that the production and test APIs share values such as API tokens, URL paths, and resources IDs.
+
+To create environment variables:
+
+- Find **Environment** at the top right of the request builder (the drop-down that says "No Environment").
+  - Use `CTRL+N` to bring up the _Create New_ panel and select **Environment**.
+- You can give an environment variable both an initial value and a current value.
+- An _initial value_ will be shared if you share your Postman environment with a team, whereas a current value is not shared and is only stored locally.
+  - ex. If you have a private key, you can store the private key as the current value.
+    - Then you will be able to use the variable in places where you would have to paste the private key.
+
+#### Collections
+
+- _Collections_ are groups of API requests that can be imported into Postman.
+- If an API provider offers a collection, you won't have to physically type in every single request. Instead you can just import the providers collection.
+- You can explore and download public collections to Postman from [https://www.postman.com/explore/collections](https://www.postman.com/explore/collections).
+- The **Import** button lets you import collections, environments, and API specifications.
+  - At the time of writing Postman supported: OpenAPI 3.0, RAML 0.8, RAML 1.0, GraphQL, cURL, WADL, Swagger 1.2, Swagger 2.0, Runscope, and DHC.
+  - You can make your testing quite a bit easier if you can import your target API specification. Doing this will save you the time of having to craft all the API requests by hand.
+  - Collections, environments, and specifications can all be imported as a file, folder, link, or raw text or through a linked GitHub account.
+
+Steps to importing:
+
+1. Click the **Import** button found at the top left of Postman.
+2. Select the Link tab (or whatever way you wish to import).
+3. Paste the URL to the APi specification and click **Continue**.
+4. On the Confirm Your Import screen, click **Import**.
+5. You should now have whatever collection you imported saved in Postman.
+
+- Test it out by selecting one of the requests in the collection and clicking send.
+- For the request to work, you might need to check the collection's variables and make sure they're set to the correct values.
+  - To see and edit variables navigate to the **Edit Collection** window by selecting the "..." drop down on the top right, then selecting edit, then click the **Variables** panel.
+  - If you notice a variable like `{{baseUrl}}` you will need to update the variable to the full URL of the public API.
+  - This should allow you to start sending the requests.
+- Whenever you import a collection and run into issues, this is how you will troubleshoot variables.
+  - Also check that you haven't omitted any authorization requirements.
+
+#### The Collection Runner
+
+- The _Collection Runner_ allows you to run all the saved requests in a collection. You can select the collection you want to run, the environment you want to pair it with, how many times you want to run the collection, and a delay in case there are rate-limiting requirements.
+- Requests can be put into a specific order.
+- Once Collection Runner has run, review the _Run Summary_ to see how each request was handled.
+  - ex. Open Collection Runner, select Twitter API v2, and run the Collection Runner. This gives you an overview of all API requests in that collection.
+
+#### Code Snippets
+
+- On the right sidebar menu, you will find the "</>" code snippet icon.
+- This is used to translate the built request into many different formats: cURL, Go, HTTP, JavaScript, NodeJS, PHP, and Python.
+- This feature is helpful when you craft a complicated API request in Postman and then need to pivot to another tool.
+- You can craft a complicate API request in Postman, generate a cURL request, and then use that with other command line tools.
+
+#### The Test Panel
+
+- The _Tests panel_ allows you to create scripts that will run against responses to your requests.
+- Postman has prebuilt code snippets available on the right side of the Test panel for those who lack programming skills.
+
+- Suggested code snippets to check out:
+  `Status code: Code is 200`
+  `Reponse time is less than 200ms`
+  `Response body: contains string`
+
+Test for status code 200 JavaScript:
+
+```
+pm.test("Status code is 200", function () {
+  pm.response.to.have.status(200);
+});
+```
+
+- You can make changes to these tests, like changing the response code number, then changing the test name to reflect the changes.
+- After your tests are configured, you can check the **Test Results** tab of a response to see if the tests succeeded or failed.
+  - A good practice with tests is to make sure the tests can fail. They are only effective if they pass and fail when they're supposed to.
+- Check out the [Postman Test scripts documentation](https://learning.postman.com/docs/writing-scripts/test-scripts).
+- [Postman's learning centre](https://learning.postman.com)
+- [Postman's Documentation](https://learning.postman.com/docs/getting-started/introduction).
+
+### Configuring Postman to Work with Burp Suite
+
+- Postman is useful for interacting with APIs, and Burp Suite is a powerhouse for web application testing. If you combine these applications, you can configure and test an API in Postman and then proxy the traffic over to Burp Suite to brute-force directories, tamper with parameters, and fuzz al the tings.
+
+1. Open Postman settings by pressing `CTRL+,` or navigating to File > Settings.
+2. Click the **Proxy** tab.
+3. Click the checkbox for adding a custom proxy configuration.
+4. Make sure to set the proxy server to 127.0.0.1.
+5. Set the proxy server port to 8080.
+6. Select the **General** tab and turn SSL certificate verification **Off**.
+7. In Burp Suite, select the **Proxy** tab.
+8. Click the button to turn Intercept On.
+
+- Send a request using Postman, if it is intercepted by Burp Suite, you've properly configured everything.
+- Leave the proxy on and toggle Burp Suites "turn Intercept on" function when you want to capture requests and responses.
+
+### Supplemental Tools
+
+- This section is aimed at providing some tools that will compensate for using Burp Suite Community Edition instead of the Pro version.
+
+#### Performing Reconnaissance with OWASP Amass
+
+- _OWASP Amass_ is an open-source information-gathering tool that can be used for passive and active reconnaissance.
+- With only a target's domain name, Amass can scan through many internet sources for your target's associated domains and subdomains to get a list of potential target URLs and APIs.
+
+**Installation**:
+
+- On Kali Linux: `sudo apt-get install amass`
+- On Arch Linux: `yay -Syu amass-bin` (the aur/amass package has an issue with installation at time of writing. Use aur/amass-bin instead.)
+
+**Configuring API keys**:
+
+- Comes pretty powerful out of the box, still, you can increase it's effectiveness by adding API keys with accounts from GitHub, Twitter (X), and Censys.
+- The books methods for adding API keys is no longer current. API keys aren't set up in config.ini anymore, they're stored in datasources.yaml and the new config file is config.yaml.
+- Take a look at the [documentation](https://github.com/owasp-amass/amass/blob/master/doc/user_guide.md).
+- Although time consuming, it would greatly increase the functionality of Amass to set up all the API keys that are free.
+
+To get you started:
+
+1. Create an amass directory for the configs: `mkdir ~/.config/amass`
+2. Copy the sample configs to `~/.config.amass` with: `cp /usr/share/amass/examples/* ~/.config/amass/`
+
+- After installing amass the sample configs should be in `/usr/share/amass/examples/` if not, you can download them at `https://github.com/owasp-amass/amass/tree/master/examples`.
+- Amass default config is configured to use wordlists from the examples repo, you should change this to use seclists, which if you download using a package manager, will update the lists as they get worked on.
+- When configuring API keys, it's best practice to create a dedicated account for amass to use.
+  - ex. Instead of using the GitHub account that you publish content to generate an API key, create a new account specifically for Amass.
+
+#### Discovering API Endpoints with Kiterunner
+
+- _Kiterunner_ is a content discovery tool designed specifically for finding API resources.
+- Can scan at 30,000 requests per second, and also takes into account that load balancers and WAFs will likely enforce rate limiting.
+- Kiterunner outperforms dirbuster, dirb, Gobuster, and dirsearch for content discovery with APIs because it was built with API awareness.
+- It's wordlists, request methods, parameters, headers, and path structures are all focused on finding API endpoints and resources.
+  - the tool includes data from 67,500 Swagger files.
+- Built to detect the signature of different APIs: Django, Express, FastAPI, Flask, Nginx, Spring, Tomcat, and more.
+- You can supply kiterunner with various wordlists, which it then uses as payloads for a series of requests.
+  - These requests will help you discover interesting API endpoints.
+- Allows you to use Swagger JSON files, Assetnote's .kite files, and .txt wordlists.
+  - All Assetnote's wordlists are hosted at [https://wordlists.assetnote.io](https://wordlists.assetnote.io). Care, it's over 2 gigs.
+  - You can download all of the wordlists at once with: `wget -r --no-parent -R "index.html*" https://wordlists-cdn.assetnote.io/data/ -nH -e robots=off`.
+
+**Installation**:
+
+- On Kali Linux with git clone (also works on arch):
+  `git clone https://github.com/assetnote/kiterunner.git`
+  `cd kiterunner`
+  `make build`
+  `sudo ln -s $(pwd)/dist/kr /usr/local/bin/kr`
+- On Arch using yay (or other AUR helper):
+  `yay -Syu aur/kiterunner-bin`
+  - Make sure to check the version to ensure it matches the same one as the github page!
+- Check if it installed correctly by running kiterunner from the command line: `kr`
+
+#### Scanning for Vulnerabilities with Nikto
+
+- _Nikto_ is a command line web application vulnerability scanner that is quite effective at information gathering.
+- Nikto will provide you with information about the target web server, security misconfigurations, and other web application vulnerabilities.
+-

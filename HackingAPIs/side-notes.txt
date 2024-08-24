@@ -3,7 +3,15 @@ Vuln Scanners recommended in book for APIs:
 - Qualys
 - ZAP
 - Nikto
+- Amass
 
 To use with Burp Suite:
 Kiterunner
 Proxy SwitchyOmega
+Autorize
+JSON Web Tokens
+InQL Scanner 
+IP Rotate
+Bypass WAF
+Postman
+

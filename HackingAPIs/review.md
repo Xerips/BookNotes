@@ -10,3 +10,7 @@
   - Honestly, the creative use of terminology leads to equivocation and drives me a bit batty.
   - I could be completely wrong about this, and it may in fact be the way in which people in the API space communicate, but it seems inaccurate and sloppy.
 - Sections are pretty disorganized and so you will have to reorganize notes and remove duplicate information if you want to have them in a more easily studied or reviewed format. I've done a bit of this to try and organize things, but my notes still jump around quite a bit because the book does.
+
+- Alright, once you get through the first few chapters, the book starts getting really good!
+- The fact that the author takes the time to layout some powerful tools that will compensate for using Burp Suite Community is legendary.
+- There are some things that haven't aged well, mostly links that no longer work and the configuration for amass has changed, but it's easy enough to look up the information and check out the documentation of features or configurations that have changed since the writing.
