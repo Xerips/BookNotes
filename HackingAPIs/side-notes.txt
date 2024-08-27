@@ -15,3 +15,7 @@ IP Rotate
 Bypass WAF
 Postman
 
+Other Useful tools:
+DNS Dumpster
+Pastehunter
+TruffleHog
