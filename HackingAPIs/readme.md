@@ -1532,4 +1532,259 @@ To get you started:
 
 - _Nikto_ is a command line web application vulnerability scanner that is quite effective at information gathering.
 - Nikto will provide you with information about the target web server, security misconfigurations, and other web application vulnerabilities.
--
+- Will show allowed HTTP methods, header information, potential API endpoints, and other directories that could be worth checking out.
+- Scan a domain: `nikto -h https://example.com`
+- I've used Nikto in the past, and I think while working through 100ish vulhub boxes, it found something useful once. It should be interesting to see if it has better results with API testing.
+
+#### Scanning for Vulnerabilities with OWASP ZAP
+
+- ZAP has two components:
+  - Automated Scan:
+    - Performs web crawling, detects vulnerabilities, tests web app responses by altering request parameters.
+    - Great for detecting surface directories of a web application including API endpoints.
+    - To run it, enter the target URL into the ZAP interface and click the button to start the attack.
+    - Once the scan is complete, you receive a list of alerts categorized by severity.
+    - Can be riddled with false positives.
+    - Limited to surface of the web app unless unintentionally exposed directories exist.
+    - Cannot infiltrate beyond authentication requirements.
+  - Manual Explore:
+    - Useful for exploring beyond the surface of the web app.
+    - AKA ZAP HUD (Heads up display) can be enabled.
+    - When launching ZAP HUD it will look like normal browsing, but ZAP alerts and functions will overlay the page.
+    - This allows you to have more control over when to start crawling, when to run active scans, and when to turn on "attack mode."
+    - ex.
+      - run through the user account creation process and authentication/authorization process with the ZAP scanner running to automatically detect flaws in these processes.
+      - Vulnerabilities will pop up like gaming achievements.
+      - We use ZAP HUD to discover APIs.
+
+#### Fuzzing with Wfuzz
+
+- Wfuzz will perform 900 requests per minute.
+- Basic request formate for Wfuzz:
+  - `fwuzz option -z payload,params url`
+  - `fwuzz -z file,/usr/share/wordlists/list.txt http://targetname.com/FUZZ`
+    - -z option specifies a type of payload followed by the actual payload.
+    - In the above, we specified a file payload located at the following path.
+  - `wfuzz -X POST -z list,admin-dashboard-docs-api-test http://targetname.com/FUZZ`
+    - -X option specifies the HTTP request method.
+    - Using the `list` option means that we will specify the payload in the request.
+    - The above tests an endpoint for a list of HTTP verbs.
+  - `wfuzz -z range,500-1000 http://tagetname.com/account?user_id=FUZZ`
+    - Easily test for a series of numbers, like user_ids.
+  - `wfuzz -z list,A-B-C -z range,1-3 http://targetname.com/FUZZ/user_id=FUZZ2`
+    - The above shows how to fuzz for 2 separate parameters.
+- Wfuzz show filter options:
+  - --sc Only shows responses with specific HTTP response codes.
+  - --sl Only shows responses with a certain number of lines.
+  - --sw Only shows responses with a certain number of words.
+  - --sh Only shows responses with a certain number of characters.
+  - ex. `wfuzz -z file,/usr/share/wordlists/list.txt -sc 200 http://targetname.com/FUZZ`
+    - The above will only show results that include a status code 200.
+- Wfuzz hide filter options:
+  - --hc Hides responses with specific HTTP status codes.
+  - --hl Hides reponses with a specific number of lines.
+  - --hw Hides responses with a specified number of words.
+  - --hh Hides responses with a specified number of characters.
+- ex. `wfuzz -z file,/usr/share/wordlists/list.txt -sc 404 -sh 950 http://targetname.com/FUZZ`
+  - This scan will hide all results that have a status code of 404 and hide results that have 950 characters.
+- [Documentation](https://wfuzz.readthedocs.io/en/latest/)
+
+#### Discovering HTTP Parameters with Arjun
+
+- An open source Python-based API fuzzer developed specifically to discover web application parameters.
+- Used to discover basic API functionality, find hidden parameters, and test API endpoints.
+- A good first scan for an API endpoint during black box testing or as an easy way to see how well API documentation parameters match up with the scan's findings.
+- Comes preconfigured with a 26,000 parameter wordlist and does some of the filtering for you using it's anomaly detection.
+- Arjun has built in suggestions for when a target does not cooperate.
+
+Installation:
+
+- `mkdir /opt/arjun/`
+- `cd /opt/arjun/`
+- `sudo python3 -m venv .`
+- `source /opt/arjun/bin/activate`
+- `sudo chown -R $(whoami):$(whoami) /opt/arjun`
+- `pip3 install arjun`
+
+Usage:
+
+- `python3 /opt/arjun/bin/arjun -u https://target_address.com`
+- `python3 /opt/arjun/bin/arjun -u https://example.com -o arjun-results.json`: specify the file extension for different formats.
+- `python3 /opt/arjun/bin/arjun -i burp_targets.txt`: pass a list of targets.
+
+### Lab #1: Enumerating the User Accounts in a REST API
+
+**Lab Goal**: Find the total number of user accounts in `reqres.in` which is a REST API designed for testing.
+
+- Navigate to `https://reqres.in`
+- The landing page shows the API documentation and the first endpoint is `LIST USERS`. We will ignore this for the purposes of the lab.
+- We use the ` SINGLE USER` endpoint because it will help build the skills needed to discover vulnerabilities like BOLA and BFLA.
+
+- When we click on the `SINGLE USER` endpoint, we can see that a GET request is being sent to `/api/users/2` and it appears then that user accounts are organized in the `user` directory by their `id` numbers.
+
+Testing the Theory:
+
+- Set up the API request using Postman:
+  - Set the request method in Postman to `GET`, and add the URL `https://reqres.in/api/users/1`, then click Send.
+    - If you've set up Postman to work with Burp Suite with "Use custom proxy configuration" in settings, turn this off to sent requests directly.
+  - Should return a response with the user G.B.
+- Send the request over to Burp Suite by enabling the "Use custom proxy configuration" in Postman and then opening Burp Suite, Proxy tab, and turn intercept on.
+
+  - Resend the request using Postman, and it should be intercepted in Burp Suite.
+
+- Once the request has been intercepted by Burp Suite, send the request to the intruder tab with `CTRL+I` or right clicking the request in Burp Suite and selecting "send to intruder."
+- Clear the payload positions, if anything is highlighted with the § character.
+- Add the 1 from /api/users/1 to the payload positions by highlighting it and clicking add.
+- You can change it from §1§ to §WhateverYouWant§, the contents of § § is a placeholder for the payload.
+- Once the position we're going to attack is highlighted, go to the payloads tab, change "Simple list" to "Numbers"
+- Update the "Number range" to "From: 0" "To: 25" "Step: 1".
+- Click "Start attack" highlighted in orange to start the attack on the endpoint.
+  - The attack results in a bunch of 404 and 200 responses.
+  - The 404 responses are failures to identify a user at the specific endpoints.
+  - The 200 responses return valid users if you click on them to see the response.
+  - You can cycle through the responses by clicking on them or using the arrow keys to navigate. Make sure you're on the Response tab and not the Request tab to see the contents of the response.
+  - Using this technique we find there are 12 users.
+
+## Chapter 5: Setting Up Vulnerable API Targets
+
+_Note_: This lab contains deliberately vulnerable systems. These could attract attackers and introduce new risks to your home or work networks. Do not connect these machines to the rest of your network; make sure the hacking lab is isolated and protected. In general, be aware of where you host a network of vulnerable machines.
+
+#### Creating a Linux Host
+
+- Use either a hyper-visor or a cloud solution for hosting.
+- Guides on building a home hacking lab:
+  - Cybrary, ["Tutorial: Setting Up a Virtual Pentesting Lab at Home"](https://www.cybrary.it/blog/0p3n/tutorial-for-setting-up-a-virtual-penetration-testing-lab-at-your-home)
+  - Black Hills Information Security, ["Webcast: How to Build a Home Lab"](https://www.blackhillsinfosec.com/webcast-how-to-build-a-home-lab)
+  - Null Byte, ["How to Create a Virtual Hacking Lab"](https://null-byte.wonderhowto.com/how-to-back-like-pro-create-virtual-hacking-lab-0157333)
+  - Hacking Articles, ["Web Application Pentest Lab Setup on AWS"](https://www.hackingarticles.in/web-application-pentest-lab-setup.on-aws)
+- Use these to set up your Linux Machine.
+
+### Installing Docker and Docker Compose
+
+- Follow the instructions at https://docs.docker.com/engine/install/ubuntu (if you're using an ubuntu host).
+- The official documentation for installing Docker Compose: https://docs.docker.com/compose/install.
+
+### Installing Vulnerable Applications
+
+- OWASP crAPI
+- OWASP Juice Shop
+- OWASP DevSlop's Pixi
+- Damn Vulnerable GraphQL
+
+- These apps will help you develop essential API hacking skills such as discovering APIs, fuzzing, configuring parameters, testing authentication, discovering OWASP API Security Top 10 vulnerabilities, and attacking discovered vulnerabilities.
+
+#### The completely rediculous API (crAPI)
+
+- crAPI was meant to demonstrate the most critical API vulnerabilities.
+- Contains a modern web application, an API, and Mail Hog email server.
+- This one has a lot to learn.
+
+#### OWASP DevSlop's Pixi
+
+- MongoDB, Express.js, Angular, Node (MEAN) stack web application.
+- Designed with deliberately vulnerable APIs.
+- Is a social media platform with a virtual payment system.
+  - Hack the user information, administrative functionality, and payment system.
+- Easy to get up and running:
+  - `git clone https://github.com/DevSlop/Pixi.git`
+    `cd Pixi`
+    `sudo docker-compose up`
+  - Browse to http://localhost:8000 to view the landing page.
+
+#### OWASP Juice Shop
+
+- Designed to include vulnerabilities from both the OWASP top 10 and OWASP API Security Top 10.
+- Tracks your hacking progress and includes a hidden scoreboard.
+- Built using: Node.js, Express, and Angular.
+  - JavaScript application powered by REST APIs.
+- Very supported.
+- Install:
+  `docker pull bkimminich/juice-shop`
+  `docker run --rm -p 80:3000 bkimminich/juice-shop`
+
+#### Damn Vulnerable GraphQL Application
+
+- DVGA
+- Install:
+  `sudo docker pull dolevf/dvga`
+  `sudo docker run -r -p 5000:5000 -e WEB_HOST=0.0.0.0 dolevf/dvga`
+
+### Adding Other Vulnerable Apps
+
+| Name                        | Contributor    | GitHub URL                                             |
+| --------------------------- | -------------- | ------------------------------------------------------ |
+| VAmPI                       | Erev0s         | https://github.com/erev0s/VAmPI                        |
+| DVWS-node                   | Snoopysecurity | https://github.com/snoopysecurity/dvws-node            |
+| DamnVulnerableMicroServices | ne0z           | https://github.com/ne0z/DamnVulnerableMicroServices    |
+| Node-API-goat               | Layro01        | https://github.com/layro01/node-api-goat               |
+| Vulnerable GraphQL API      | AidanNoll      | https://github.com/CarveSystems/vulnerable-graphql-api |
+| Generic-University          | InsiderPhD     | https://github.com/InsiderPhD/Generic-University       |
+| vulnapi                     | tkisason       | https://github.com/tkisason/vulnapi                    |
+
+## Chapter 6: Discovery
+
+- The first step in the discovery process is to locate APIs and validate whether they are operational.
+  - In the process you'll want to try to find credential information (keys, secrets, usernames, and passwords), version information, API documentation, and information about the API's business purpose.
+- APIs are meant to be used either internally, by partners and customers, or publicly.
+  - If an API is intended for public or partner use, it's likely to have developer-friendly documentation that describes the API endpoints and instructions for using it.
+  - If an API is used for select customers or internal use, you'll have to rely on other clues like naming conventions, HTTP response header information such as `Content-Type: application/json`, HTTP responses containing JSON/XML, and information about JavaScript source files that power the application.
+
+### Passive Recon
+
+- The main goal to passive recon is to find and document the target's attack surface without making the target aware of your investigation.
+  - The attack surface is the total set of systems exposed over a network from which it may be possible to extract data, through which you could gain entry to other systems, or to which you could cause an interruption in the availability of systems.
+- Passive recon generally leverages OSINT.
+
+#### Phase one: Cast a Wide Net
+
+- Leverage search engines like google, Shodan, and ProgrammableWeb to find general information about the API such as usage, design, architecture, documentation, and business purpose, as well as information about the about the industry the target operates within.
+- Use tools like DNS Dumpster and OWASP Amass.
+  - DNS Dumpster performs DNS mapping by showing all the hosts related to the target's domain name and how they connect to each other.
+
+#### Phase two: Adapt and Focus
+
+- Use your findings from phase one and drill deeper into what you've found.
+  - Increase the specificity of your searches.
+  - Combine information found from different tools to gain insights.
+  - Search github with tools like PastHunter to find exposed sensitive info.
+
+#### Phase three: Document the Attack Surface
+
+- Document and take screen captures of all interesting findings.
+- Create a task list of the passive reconnaissance findings that could prove useful throughout the rest of the attack.
+
+#### Google Hacking
+
+- Check out the section on google hacking in my "BugBountyBootCamp" book review, or visit [Offensive Security's Google Hacking Database](https://www.exploit-db.com/google-hacking-database).
+
+#### ProgrammableWeb's API Search Directory
+
+- [ProgrammableWeb](https://www.programmableweb.com) is the go to for API-related information - See API University.
+- Use the API directory to search the database of over 23,000 APIs.
+  - Expect to find API endpoints, version information, business logic information, the status of the API, source code, SDKs (Software Development Kits), articles, API documentation, and changelogs.
+- if you find that your target is using an API like Medici Bank API, you can search ProgrammableWeb API directory to search the database for that particular API.
+
+#### Shodan
+
+- Use Shodan to discover external-facing APIs and get information about your target's open ports, making it useful if you have only an IP address or an organization's name to work with.
+- You can search Shodan with general search queries, or you can use search parameters as you would when writing Google Dorks.
+
+| Shodan queries                   | Purpose                                                                                                                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| hostname:"tagetname.com"         | Using `hostname` will perform a basic Shodan search for your target's domain name. This should be combined with the following queries to get results specific to your target. |
+| "content-type: application/json" | APIs should have their `content-type` set to JSON or XML. This query will filter results that respond with JSON                                                               |
+| "content-type: application/xml"  | This query will filter results that respond with XML.                                                                                                                         |
+| "200 OK"                         | Add this to show only successful requests. Care, if an API does not accept the format of Shodan's request, it will likely issue a 300 or 400 response.                        |
+| "wp-json"                        | This will search for web applications using the WordPress API.                                                                                                                |
+
+- ex. `"ewise.com" "content-type: application/json"`
+
+#### OWASP Amass
+
+- If set to active mode, Amass will collect information directly from the target by requesting its certificate information.
+- If passive, it collects data from search engines (such as Google, Bing, and HackerOne), SSl certificate sources (GoogleCt, Censys, and FacebookCT), search APIs (such as Shodan, AlienVault, Cloudflare, and GitHub), and the web archive Wayback.
+- ex. `amass enum -passive -d twitter.com | grep api`
+- ex. `amass intel -addr <Target IP>`
+  - Collects SSl certificates, reverse whois, and finds ASN IDs associated with the target.
+- ex. `amass intel -d <target domain> -whois`
+  - Domains from the previous example can be used to perform a reverse Whois on those domains.
