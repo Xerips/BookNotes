@@ -1788,3 +1788,631 @@ _Note_: This lab contains deliberately vulnerable systems. These could attract a
   - Collects SSl certificates, reverse whois, and finds ASN IDs associated with the target.
 - ex. `amass intel -d <target domain> -whois`
   - Domains from the previous example can be used to perform a reverse Whois on those domains.
+- ex. `amass enum -passive -d <target domain>`
+  - Once you've collected a list of interesting domains, start using enum to begin enumerating subdomains. Passive refrains from direct interaction.
+- ex. `amass enum -active -d <target domain>`
+  - Active enum will perform the same as passive with the addition of domain name resolution, attempt DNS transfers, and grab SSL certificate info.
+- ex. `amass enum -active -brute -w /usr/share/wordlist/API_superlist -d <target domain> -dir <directory name>`
+  - Use a wordlist to brute force sub domains to a directory of your choice.
+- ex. `amass viz -enum -d3 -dir <directory name>`
+  - Visualize relationships between the data amass returns with viz. This creates an HTML export of the data found.
+  - This will show the types of DNS records, dependencies between different hosts, and the relationships between different nodes.
+
+### Active Recon
+
+#### Phase Zero: Opportunistic Exploitation
+
+- If you discover a vulnerability at any point in the active recon process, you should take the opportunity to attempt exploitation.
+  - Through experience, you will learn when to dive into an exploit and when to avoid potential rabbit holes.
+
+#### Phase One: Detection Scanning
+
+- The goal of detection scanning is to reveal potential starting points for your investigation.
+- As soon as a scan detects an API service, move into phase two while the scans continue to run.
+
+#### Phase Two: Hands-on Analysis
+
+- Hands-on analysis is the act of exploring the web application using a browser and API client.
+- Learn about all the potential levers you can interact with and test them out.
+- Examine the website, intercept requests, look for API links and documentation, and develop an understanding of the business login.
+
+- Consider the application from three perspectives:
+  - Guests:
+    - How would a new user use this site?
+    - Can new users interact with the API?
+    - Is API documentation public?
+    - What actions can this group perform?
+  - Authenticated Users:
+    - What can you do when authenticate that you couldn't do as a guest?
+    - Can you upload files?
+    - Can you explore new sections of the web application?
+    - Can you use the API?
+      How does the web application recognize that a user is authenticated?
+  - Site Administrators:
+    - Where would site administrators log in to manage the web app?
+    - What is in the page source?
+    - What comments have been left around various pages?
+    - What programming languages are in use?
+    - What sections of the website are under development or experimental?
+- If the site hosts public information and does not need to authenticate users, it may only have guest users.
+
+- Next, analyze the app as a hacker by intercepting the HTTP traffic with Burp Suite.
+- When you use the web app's search bar or attempt to authenticate, the app might be using API requests to perform the requested action.
+  - Look for these requests in Burp Suite.
+- When you run into road blocks, it's time to review new results from the phase one scans and move onto phase three.
+
+#### Phase Three: Targeted Scanning
+
+- Refine your scans and use tools that are specific to the target.
+- Detection Scanning (Phase One) casts a wide net.
+- Targeted scanning should focus on the specific type of API, it's version, the web application type, and service versions discovered.
+  - Whether the app is on HTTP or HTTPS, any active TCP ports, and other information gleaned from understanding the business logic.
+  - ex. If you discover that an API is running over a nonstandard TCP port, you can set your scanners to take a closer look at that port.
+  - ex. If you find that the web app was made with WordPress, check whether the WordPress API is accessible by visiting /wp-json/wp/v2.
+- At this point, you should know the URLs of the web application and can begin brute-forcing uniform resource identifiers (URI) to find hidden directories and files.
+- Once these tools are up and running, review results as they flow in to perform a more targeted hands-on analysis.
+
+### Tools and Techniques
+
+#### Baseline Scanning with Nmap
+
+- Good for phase 1 and for phase 3.
+- For API discovery you should run two Nmap scans in particular:
+  - General detection:
+    - Uses default scripts and service enumeration against a target and saves the output in all 3 formats (XML, Nmap, Greppable) with the -oA flag.
+    - `nmap -sC -sV <target address of network range> -oA nameofoutput`
+  - All Port:
+    - `nmap -p- <target address> -oA allportscan`
+- Once you discover a web server, open a browser and begin analysis.
+
+#### Hidden Paths in Robots.txt
+
+- If you find this file, it contains everything the developers don't want web crawlers (like google) to find and list on their search engines.
+- If they don't want Google looking there, you should definitely be looking there.
+
+#### Finding Sensitive Information with Chrome DevTools
+
+- Contains highly underrated web application hacking tools.
+- Follow these steps to find sensitive information in page sources by systematically filtering through thousands of lines of code.
+- Open dev tools with F12 or CTRL+SHIFT+I.
+- Select the Network tab and refresh the page.
+- Look for interesting files (anything labelled API is a good start), right click JavaScript files that look interesting and select Open in Sources Panel to view their source code.
+  - You can click XHR to see the Ajax requests being made.
+  - Search for key terms like "API," "APIkey," "secret," "password," etc.
+
+**Memory Tab**
+
+- Make use of the DevTools Memory tab which allows you to take a snapshot of the memory heap distribution.
+- Static JavaScript files include all sorts of information and thousands of lines of code, so it may not be entirely clear exactly how the web app leverages an API.
+- Use the Memory panel to record how the web application is using resources to interact with an API.
+- Click the Memory tab, under Select profiling Type, choose Heap Snapshot. Then under Select JavaScript VM Instance, choose the target to review. Then click the take Snapshot button.
+  - Once the file has been compiled under the Heap Snapshots section on the left, select the new snapshot and use CTRL+F to search for potential API paths.
+  - Try searching for terms using the common API path terms like "api," "v1," "v2," "v3," "swagger," "rest," and "dev."
+  - Check out [Assetnote API wordlists](https://wordlists.assetnote.io) for more inspiration.
+- The Memory module can help you discover the existence of APIs and their paths. Additionally, you can use it to compare different memory snapshots.
+  - This can help you see the API paths used in authenticated and unauthenticated states, in different parts of a web application, and in its different features.
+
+**Performance tab**
+
+- Use the Performance tab to record certain actions (such as clicking a button) and review them over a timeline broken down into milliseconds.
+  - This lets you see if any event you initiate on a given web page is making API requests in the background.
+  - Just click the circular record button, perform actions on the webpage, and stop the recording.
+- You can review the triggered events and investigate the initiated actions.
+- Under "Main," you can see that a click event occurred, initiating a POST request to the URL `/identity/api/auth/login` (example from the book), a clear indication that you've discovered an API.
+- To help you spot activity on the timeline, consult the peaks and valleys on the graph located near the top.
+  - A peak represents an event, such as a click.
+  - Navigate to a peak and investigate the events by clicking the timeline.
+
+#### Validating APIs with Burp Suite
+
+- To validate APIs using Burp, intercept an HTTP request sent from your browser and then use the Forward button to send it to the server.
+- Next, send the request to Repeater.
+- If the response contains a 401 Unauthorized status code, try sending a gibberish request so you can determine what a response from a non-existent resource returns, should return a 404.
+  - ex. A gibberish request `GET /user/test098765`
+- You may be able to find a verbose error message with this technique which will be found under the `WWW-Authenticate` header, or something similar, and could reveal the path of an existing API endpoint.
+
+#### Crawling URIs with OWASP ZAP
+
+- One of the objectives of active reconnaissance is to discover all of a web site's directories and files, AKA _uniform resource identifiers_ or URIs.
+- There are two ways to do this, Crawling and brute-forcing. ZAP uses Crawling.
+- From the Quick Start tab, enter the target URL and click **Attack**.
+- You can watch the live results using the Spider or Sites tab.
+- You may discover API endpoints in these tabs.
+- If you don't find any obvious APIs, use the Search Tab, and look for terms like "API," "GraphQL," "JSON," "RPC," and "XML."
+- Once you've found a section of the site you want to investigate, begin manual exploration using the ZAP HUD to interact with the web application's buttons and user input fields.
+  - While you do this, ZAP performs additional vuln scans.
+- Navigate to the Quick Start tab and select Manual Explore (you may need to click the back arrow to exit the automated scan).
+- Launch your browser of choice from the selection screen and the ZAP HUD should be enabled.
+  - Click Continue to Your Target in the ZAP HUD welcome screen.
+- While doing this ZAP will look for additional vulnerabilities, as well as search for additional paths while you navigate.
+- The colored flags represent page alerts, which include vulnerabilities and interesting anomalies.
+
+#### Brute-Forcing URIs with Gobuster
+
+- Gobuster can be used to brute-force URIs and DNS subdomains from the command line.
+- Provides URL paths and HTTP status response codes.
+- Gobuster is much faster than Burp Suite community at doing this.
+- Consider using /api/wordlists from Chapter 4 to specifically target APIs instead of using a longer wordlist designed for general purpose.
+- ex. `gobuster dir -u http://<target>:<port> -w /path/to/api/wordlists/common_apis_160`
+- Once you've found API directories, you can use Burp Suite to investigate them further.
+- To ignore certain response status codes, use the option `-b` if you want to see additional status codes, use `-x`.
+- ex. `gobuster dir -u http://<target> -w /path/to/wordlists/api_list/common_apis_160 -x 200,202,301 -b 302`
+
+#### Discovering API Content with Kiterunner
+
+- The best tool for discovering API endpoints and resources.
+- Unlike Gobuster, Kiterunner not only relies on standard HTTP GET requests, but also utilizes all HTTP request methods common with APIs and also mimics common API path structures.
+- ex. `kr scan http://<target>:<port> -w /path/to/kiterunner/routes-large.kite`
+- You can use Kiterunner's brute option instead of scan if you want to brute force with a wordlists instead of a .kite file.
+  - ex. `kr brute <target> -w /path/to/wordlist.txt`
+- If you have multiple targets, you can save a list of line-separated targets as a text file and use that file as the target.
+- One of the coolest Kiterunner features is the ability to replay requests.
+  - This allows you to be able to dissect exactly why a request is interesting.
+  - In order to replay a request, copy the entire line of content into Kiterunner, paste it using the kb replay option, and include the wordlist you used.
+  - ex. `kr kb replay "GET    414 [   183,    7,    8] http://<target>:<port>/api/end/point ocf6841be7ac8badc6e237ab300a90ca873d571" -w /path/to/kiterunner/routes-large.kite`
+- You can review interesting results and then pivot to testing them using Postman and Burp Suite.
+
+**Book Lab** Performing Active Recon for a Black Box Test.
+
+## Chapter 7: Endpoint Analysis
+
+- Critical vulnerabilities or data leaks sometimes present during this stage of testing. These are early wins!
+- APIs are special targets because you may not need advanced skills to bypass firewalls and endpoint security; instead, you may just need to know how to use an endpoint as it was designed.
+
+### Finding Request Information
+
+- If you're used to attacking web applications, your hunt for API vulnerabilities should be somewhat familiar.
+  - The primary difference is that you no longer have obvious GUI cues such as search bars, login fields, and buttons for uploading files.
+- API hacking relies on the backend operations of those items that are found in the GUI.
+  - GET requests with query parameters and most POST/PUT/UPDATE/DELETE requests.
+- Before you craft requests to an API, you'll need an understanding of its endpoints, request parameters, necessary headers, authentication requirements, and administrative functionality.
+- Documentation will often point you to those elements.
+  - To succeed in API hacking, you'll need to know how to read and use API documentation, as well as how to find it.
+- If you find a specification for an API, you can import it directly into Postman to automatically craft requests.
+- If you're doing a black box API test, and the documentation is not available, you'll have to reverse engineer the API requests on your own.
+  - To do this, thoroughly fuzz your way through the API to discover endpoints, parameters, and header requirements in order to map out the API and its functionality.
+
+#### Finding Information in Documentation
+
+- ex. Common locations for documentation:
+  `https://example.com/docs`
+  `https://example.com/api/docs`
+  `https://docs.example.com`
+  `https://dev.example.com/docs`
+  `https://developer.example.com/docs`
+  `https://api.example.com/docs`
+  `https://example.com/developers/documentation`
+
+- If the documentation is not available publicly, create and account and search for the documentation while authenticated.
+- Authors wordlist for brute-force API documentation: https://github.com/hAPI-hacker/Hacking-APIs.
+  - You can use the subdomains_list and dir_list to brute-force web applications subdomains and domains and potentially find API docs hosted on the site.
+- There's a good chance you'll find documentation during recon and application scanning.
+- If you can't find any, try Google Dorking it, or use the Wayback Machine to see if it was ever posted.
+  - Archived docs from Wayback will often be outdated, but it could give you an idea of the authentication requirements, naming schemes, and endpoint locations. Try looking up any changelogs or previous versions, patches, etc. to glean more out of the outdated resources.
+- If permitted, try social engineering tactics to get the organization to share its documentation.
+  - _Idea: Sales teams will often go to great lengths to get your business. If the business models allows it, see if you can get their sales team to send you their API documentation for you to give to your engineers for a review of fit._
+
+_Note: API documentation is only a starting point. Never trust that the docks are accurate and up-to-date or that they include everything there is to know about the endpoints. Always test for methods, endpoints, and parameters that are not included in documentation. Distrust and verify._
+
+- Elements to look out for in API documentation:
+  - _Overview_ is typically the first section of the documentation.
+    - Provides a high-level introduction of how to connect and use the API.
+    - Could contain info about authentication and rate limiting.
+  - Look for _functionality_ or the actions that you can take using the given API.
+    - These are represented by a combination of a request method (GET, PUT, POST, DELETE) and an endpoint.
+    - Look for functionality related to user account management, options to upload and download data, different way to request information, etc.
+  - Make note of request _requirements_.
+    - Could include some form of authentication, parameters, path variables, headers, and information included in the body of the request.
+    - The documentation should tell you what it requires and mention in which part of the request that information belongs.
+    - Use examples to help craft requests.
+
+| Convention | Example                                                                                                     | Meaning                                                                                                                                                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| : or {}    | /user/:id<br>/user/{id}<br>/user/2727<br>/account/:username<br>/account/{username}<br>/account/scuttleph1sh | The colon or curly brackets are used by some APIs to indicate a path variable. In other words, ":id" represents the variable for an ID number and "{username}" represents the account username you are trying to acccess |
+| \[ ]       | /api/v1/user?find=\[name]                                                                                   | Square brackets indicate that the input is optional                                                                                                                                                                      |
+| \|\|       | "blue" \|\| "green" \|\| "red"                                                                              | Double pipe represent different possible values that can be used.                                                                                                                                                        |
+| \< >       | \<find-function>                                                                                            | Angle brackets represent a DomString, which is a 16-bit string.                                                                                                                                                          |
+
+- ex.
+
+**Pixi API documentation**
+
+```
+GET     /api/picture/{picture_id}/likes       get a list of likes by user
+
+Parameters
+
+Name                            Description
+
+x-access-token *
+string                          Users JWT Token
+(header)
+
+picture_id *                    in URL string
+
+number
+(path)
+```
+
+- The request method is GET
+- The endpoint is /api/picture/{picture_id}/likes
+- The only requirements are the `x-access-token` header and the `picture_id` variable to be updated in the path.
+  - To test the endpoint, you'll need to figure out how to obtain a JSON Web Token (JWT) and what form the `picture_id` should be in.
+- You can take these instructions and insert the information into an API browser such as Postman.
+- All of the headers besides `x-access-token` will be automatically generated by Postman.
+- Register to the Pixi API to get an access token.
+- If you click the Headers (6) tab in Postman, you'll see that everything is already populated for the requests besides the `x-access-token`, which you can add manually by typing it in on the bottom row.
+  - To add the token, you can give it a variable name surrounded in {{Token Variable}}.
+  - When you do this it will be highlighted red, right click and you can "Add new variable."
+  - If you have multiple collections on the go, you'll want to create an environment and set environment variables.
+    [!postman-pixi-variables](http://github.com/Xerips/BookNotes/tree/main/HackingAPIs/postman-pixi-variables.png)
+- If your request is improperly formed, the response will let you know what went wrong so you can adjust your request accordingly.
+  - ex. If you attempt to copy and paste the endpoint without replacing {picture_id} the provider should respond with a status code 200 and a body with square brackets \[ ]. If you are having trouble understanding the response, revisit the API documentation.
+
+#### Importing API Specifications
+
+- If your target has an API specification (Open API (Swagger), RAML, API Blueprint, or in a Postman collection), finding this is even more useful than finding API documentation.
+- You can import specifications into Postman and review the requests that make up the collection, as well as the endpoints, headers, parameters, and some required variables.
+- Specifications will often be as easy or hard to find as their API Documentation counterparts.
+- Specifications are often in JSON format, but could also be in YAML, RAML, or XML format.
+  - You can often find what type of specification by scanning the beginning of the plaintext doc for a descriptor like "swagger": "2.0".
+
+**To Import:**
+
+- Under the My Workspaces side panel, click the Collections icon and then click Import next to My Workspaces.
+- Use a link, or whatever method you require to import the collection.
+
+- Once imported, make sure to check the collection variables. You can do this by selecting the main folder of the specification, in this case "Pixi App API" and looking for the "Variables" tab on the viewing pane.
+  - You can change variables here and add new ones, then save using the Save button on the top right.
+
+#### Reverse Engineering APIs
+
+- Mapping an API with serveral endpoints and a few methods can quick;y grow into quite a beast to attack.
+  - Manage this process by building requests under a collection in order to thoroughly hack the API.
+- There are two ways to reverse engineer an API with Postman:
+  - Manually construct each request.
+    - This can be cumbersome, but it allows you to capture the precise requests you care about.
+  - Proxy traffic through Postman and then use it to capture a stream of requests.
+    - This makes it easier to construct requests within Postman, but you'll have to sort through (remove or ignore), unrelated requests.
+- If you obtain a valid authentication header, such as a token, API key, or other authentication value, add that to Kiterunner to help map out API endpoints.
+
+#### Manually Building a Postman Collection
+
+- Start off by creating a new Collection by clicking the New button next to My Workspaces.
+  - Select Collection from the pop up window.
+- Set a {{baseUrl}} variable under the variable tab with the targets URL.
+- APIs can be quite large, and making small changes to many requests can be time-consuming.
+  - Using variables can help to more efficiently make changes.
+- Every time you discover an API request, you can add it to the collection.
+- To add a request, select the . . . next to the Collection name and select "Add request".
+- Create folders to organize the requests.
+- Once built, you can use the collection as if it were documentation.
+
+#### Building a Postman Collection by Proxy
+
+- The second way to reverse engineer an API is to proxy web browser traffic through Postman and clean up requests so that only the API-related ones remain.
+- Create and name a new collection for the API you'll be working on.
+- There is a Postman browser extension that can be used with Chrome, Safari, Firefox, and Edge. This makes it easier to manage proxying traffic.
+
+  - Documentation: https://learning.postman.com/docs/sending-requests/capturing-request-data/interceptor/
+  - The book mentions an satellite icon you can use to capture requests, but since version 9.24.2 this icon does not exist.
+  - You will find the "Capture requests" button on the bottom right, in fine print.
+  - Here you can save responses to your collection, toggle capture cookies, save responses for requests, etc.
+  - Under "Via Interceptor" on the top left of the info pane, you can set up your interceptor browser extension.
+
+- Once you're set up and capturing requests, start using every feature of the web application.
+  - Registering a new account, authentication, performing a password reset, clicking every link, updating your profile, use any forums, navigating to the shop, etc.
+- Once you're done using the web app, stop the proxy and review the collection made within Postman.
+- The downside here is there will be a lot of requests that aren't API related and you'll need to delete these requests and organize the collection.
+  - You may want to organize and delete as you go, personal preference.
+
+### Adding API authentication Requirements to Postman
+
+- Once you've compiled the basic request information in Postman, look for the API's authentication requirements.
+- Most APIs with authentication requirements will have a process for obtaining access, typically by sending credentials over a POST request, OAuth, or using a method separate from the API, such as email, to obtain a token.
+
+- ex. OWASP DevSlop's Pixi API
+  - Pixi's Swagger documentation tells us that we need to make a request with both `user` and `pass` parameters to the `/api/register` endpoint to receive a JWT.
+  - If you've imported the collection, you can do this with the "Create Authentication Token" request in Postman.
+  - Save this as a variable.
+  - The preconfigured request contains parameters you may not be aware of and are not required for authentication. Instead of using the preconfigured information, you can craft the response by selecting the `x-www-form-urlencoded` option with the only parameters necessary (`user` and `pass`). You can then add the keys `user` and `pass` and fill in the values. p. 165
+  ```
+  {
+    "user": "hapi@hacker.com",
+    "pass": "Password1!"
+  }
+  ```
+- Save successful authentication requests so you can repeat them when needed.
+  - Tokens could be set to expire quickly.
+- API security controls could detect malicious activity and revoke your token. As long as your account isn't blocked, you should be able to generate another token and continue your testing.
+- When you get an authentication token or API key, add it to Kiterunner.
+  - Adding an authentication header to the tool will greatly improve results.
+  - Not only with Kiterunner provide you with a list of valid endpoints, but it will also hand you interesting HTTP methods and parameters.
+- In the following example, we use the `x-access-token` provided to us from the Pixi registration process.
+  - Take the full authorization header and add it to your Kiterunner scan with the -H option:
+    `kr scan http://<target>:<port> -w /path/to/routes-large.kite -H 'x-access-token: <access token>'`
+  - This should give Kiterunner access to endpoints it wouldn't otherwise have access to.
+
+### Analyzing Functionality
+
+- Once you have the API's information loaded into Postman, you should begin looking for issues.
+- Begin by using the API as it was intended to be used.
+  - Pay attention to the responses and their status cods and error messages.
+- Seek out functionality that pings your hacker senses, particularly if there are indications of information disclosure, excessive data exposure, and other low-hanging vulnerabilities.
+- Look for endpoints that could provide sensitive information, requests that allow you to interact with resources, areas of the API that allow you to inject a payload, and administrative actions.
+- Streamline the process by proxying Kiterunner's results through Burp Suite so you can replay interesting requests.
+  `kr kb replay -w /path/to/routes-large.kite --proxy=http://127.0.0.1:8080 "<Kiterunner output>"`
+  - This request uses Kiterunner's replay option, as specified by `kb replay`.
+  - The -w option specifies the wordlist used, and `proxy` specifies the Burp Suite proxy.
+  - This allows you to repeat all interesting results captured by Kiterunner and to review the responses.
+
+#### Testing Intended Use
+
+- You can begin this process with a web browser, but they aren't designed to interact with APIs, so you might want to use Postman.
+- Use the API documentation to see how you should structure your requests, what headers to include, what parameters to add, and what to supply for authentication. Then send the request.
+  - Adjust your requests until you receive successful responses from the provider.
+
+**Questions to Ask Yourself while Exploring**
+
+- What sorts of actions can I take?
+- Can I interact with other user accounts?
+- What kinds of resources are available?
+- When I create a new resource, how is that resource identified?
+- Can I upload a file? Can I edit a file?
+
+- There is no need to make every possible request if you are manually working with the API.
+- If you have a built collection in Postman, you can easily make every possible request and see what response you get from the provider.
+- ex.
+  - Send a request to Pixi's `/api/user/info` endpoint to see what sort of response you receive from the application.
+  - To make this request, you must use the GET method.
+  - Add the {{baseUrl}}/api/user/info endpoint to the URL field.
+  - Add the `x-access-token` to the request header.
+  - Review the response.
+
+#### Performing Privileged Actions
+
+- If you've found the API documentation, any sort of administrative actions listed there should grab your attention.
+  - Privileged actions often lead to additional functionality, information, and control.
+  - ex. admin requests may give you the ability to create and delete users, search for sensitive user information, enable or disable accounts, add users to groups, manage tokens, access logs, and more.
+- If security controls are in place, _administrative actions should have authorization requirements_, but **never assume that they actually do**.
+
+**Testing admin actions**
+
+1. Test as unauthenticated user.
+2. Test as low privileged user.
+3. Test as administrative user.
+
+- When you make the admin requests as documented but without any authorization requirements, you should receive some sort of unauthorized response if any security controls are in place.
+
+**Pixi Example**
+
+- The documentation shows us that we need to use an `x-access-token` to perform the GET request to the `/api/admin/users/search` endpoint.
+- When you test this endpoint, you will notice that Pixi has basic security controls in place to prevent unauthorized users from using administrative endpoints.
+- This protected administrative endpoint establishes a goal for us in our testing: Obtain an admin JWT.
+
+#### Analyzing API Responses
+
+- Most APIs are designed to be self-service, this means developers will often leave some hint in the API responses when things don't go as planned.
+- One of the most basic skills you need is the ability to analyze the responses from requests.
+  - After sending a request, review the response for status code, headers, and content included in the body.
+- Check to see if you're receiving the responses you expect.
+  - API documentation often provides examples of what you could receive as a response.
+- Once you start using the API in unintended ways, you won't have the ability to compare responses to the documentation, at least not in a straight forward way.
+  - This is why it is good to use the API as intended before attacking it.
+- Developing a sense of regular and irregular behavior will make vulnerabilities obvious.
+- At this point, you should be able to find information disclosures, security misconfiguration, excessive data exposures, and business logic flaws without too much technical finesse.
+
+### Finding Information Disclosures
+
+- Anything that helps our exploitation of an APi can be considered an information disclosure, whether it's interesting status codes, headers, or user data.
+- When making requests, review responses for software information, usernames, email addresses, phone numbers, password requirements, account numbers, partner company names, and any information that your target claims to be useful.
+
+**Headers**
+
+- Headers can inadvertently reveal more information about the application than necessary.
+- `X-powered-by` and similar headers do not serve much of a purpose and often disclose information about the backend.
+  - This helps us know what sort of payload to craft and reveals potential application weaknesses (Public exploits for outdated tech)
+
+**Status Codes**
+
+- If you were to brute-force the paths of different endpoints and receive responses with the status codes 404 Not Found or 401 Unauthorized, you could map out the API's endpoints as an unauthorized user.
+- This gets worse if these status codes were returned for requests with different query parameters.
+  - If you were able to query parameters for a customer's phone number, account number, and email address, you could brute-force these items by treating 404s as nonexistent and 401s as existing ones.
+  - You could perform password spraying, test password resend mechanisms, or conduct phishing, vishing, and smishing.
+  - You may be able to pair query parameters together and extract personally identifiable information from the unique status codes.
+
+**API Documentation**
+
+- API docs can in themselves be information disclosure risks.
+- API docs can be an excellent source of information for business logic vulnerabilities.
+- Admin API docs will often tell you the admin endpoints, the parameters required, and the method to obtain the specified parameters.
+  - This can aid in authorization attacks (BOLA and BFLA).
+
+### Finding Security Misconfigurations
+
+- Security misconfigurations represent a large variety of items.
+- **Look for**: verbose error messaging, poor transit encryption, and other problematic configurations.
+
+#### Verbose Errors
+
+- Error messages exist to help the developers on both the provider and consumer sides understand what has gone wrong.
+- ex. If the API requires you to POST a username and password in order to obtain an API token, check how the provider responds to both existing and nonexistent usernames.
+  - A common way to respond to nonexistent usernames is with the error "User does not exist, please provide a valid username." When a user does exist but you've used the wrong password, you may get the error "invalid password."
+  - As discussed, these types of error messaging and open the doors for brute-forcing techniques.
+
+#### Poor Transit Encryption
+
+- Finding an API in the wild without transit encryption is rare.
+  - If you find this to be the case, it is likely that the provider believes the API contains only non-sensitive public information.
+  - In this case, your challenge is to find any sensitive information by use the API.
+- If the API is transmitting any sensitive information, HTTPS should be in use.
+- To perform attacks on an API with transit insecurities, you need to perform a _man-in-the-middle (MITM)_ in which you somehow intercept the traffic between a provider and a consumer.
+  - Even if HTTPS is in place, check whether a consumer can initiate HTTP requests and share their tokens in the clear.
+- Use a tool like wireshark to capture network traffic and spot plantext API requests passing across the network you're connected to.
+- ex. If you send an HTTP request to the HTTPS-protected reqres.in it will not automatically encrypt HTTP requests and they will be sent in clear text.
+
+#### Problematic Configurations
+
+- Debugging pages are a form of security misconfiguration that can expose plenty of useful information.
+- Always check to see if an API has debugging enabled.
+  - This is more common with newly developed APIs.
+- Debugging pages can provide information about the backend and much more.
+
+### Finding Excessive Data Exposures
+
+- When testing for excessive data exposure on a large scale, it's best to use a tool like Postman's Collection Runner, which helps you make many requests quickly and provides you with an easy way to review the results.
+  - If the provider responds with more information that you needed, you may have found a vulnerability.
+- Not every excess byte of data should be considered a vulnerability, watch for excess information that could be used in a further attack or discloses sensitive information.
+- Real excessive data exposure vulns are often obvious because of the sheer quantity of data provided.
+- ex. You've found an endpoint with the ability to search for usernames and when you query it you receive the username plus a time stamp of the user's last login.
+  - This is excessive data, but isn't very useful or damaging to the company.
+  - If this query resulted in returning the username, full name, email, birthday, this is significant and reportable.
+- If you find excessive data exposures on one endpoint, you can bet there will be others.
+
+### Finding Business Logic Flaws
+
+From OWASPs advice on testing business logic flaws:
+
+"You'll need to evaluate the threat agents who could possibly exploit the problem and whether it would be detected. Again, this will take a strong understanding of the business. The vulnerabilities themselves are often quite easy to discover an exploit without any special tools or techniques, as they are a supported part of the application."
+
+- Business logic flaws are unique to each business and its logic.
+- Finding and exploiting these flaws is usually a matter of turning the features of an API against the API provider.
+- These flaws can be found in the API documentation when you find instructions on how not to use the application. (Check back in chapter 3 for more info)
+
+**Examples**:
+
+- If the documentation tell you not to perform X:
+  - Perform action X.
+- If the documentation tells you that data sent in a certain format isn't validated:
+  - Upload a reverse shell payload and try to find ways to execute it.
+  - Test the size of file that can be uploaded.
+  - If reate limiting is lacking and file size if not validated, you've discovered a serious business logic flaw that will lead to a Denial of Service.
+- If the documentation tells you that all file formats are accepted:
+
+  - Upload files and test all file extensions.
+  - The author has a list of file extensions for this purpose called [file-ext](https://github.com/hAPI-hacker/Hacking-APIs/tree/main/Wordlists).
+  - If you can upload these sorts of files, the next step would be to see if you can execute them.
+
+- Consider the features of a given endpoint and determine how a nefarious person could use them to their advantage.
+
+## Chapter 8: Attacking Authentication
+
+- When it comes to testing authentication, you'll find that many of the flaws that have plagues web applications for decades have been ported over to APIs: Bad passwords and password requirements, default credentials, verbose error messaging, and bad password reset processes.
+- Certain authentication weaknesses are more commonly found in APIs than in traditional web apps:
+  - Broken API authentication comes in many forms.
+  - A lack of authentication altogether.
+  - A lack of rate limiting for authentication attempts.
+  - The use of a single token or key for all requests.
+  - Tokens created with insufficient entropy.
+  - Several forms of JSON Web Token (JWT) configuration weaknesses.
+
+### Classic Authentication Attacks
+
+#### Password Brute-Force Attacks
+
+- Brute-forcing an API's authentication is not very different from any other brute-force attack, except you'll send the request to an API endpoint, the payload will often be in JSON, and the authentication values may be base64 encoded.
+- Brute-forcing is loud and time consuming, but if the API lacks security controls to prevent brute-force attacks you should definitely try it out.
+- Finding valid user names to use in brute-forcing can be incredibly helpful in saving time and leading to positive results.
+- Resources for creating targeted password lists:
+  - [Mentalist app](https://github.com/sc0tfree/mentalist)
+  - [Common user Passwords Profiler](https://github.com/Mebus/cupp)
+- You can use Burp Suite, wfuzz, hydra, or any other brute-forcing tool you're comfortable with.
+  - ex. `wfuzz -d '{"email":"a@email.com","password":"FUZZ"}' --hc 405 -H 'Content-Type: application/json' -z file,/path/to/rockyou.txt http://<target>:<port>/api/end/point`
+  - -d option allows you to fuzz content that is sent in the body of a POST request.
+  - { } contain the body of the POST request.
+    - to discover the request format, attempt to authenticate to a web application using a browser, and then capture the authentication attempt and replicate its structure in wfuzz.
+  - --hc option hides responses with certain response codes.
+    - Do a test run to understand what response codes or character lengths indicate a failed attempt.
+  - Some API providers may issue an HTTP 415 Unsupported Media Type error code if you don't include the `Content-Type:application/json` header.
+  - Status code 200 or 300s should indicate that you've successfully brute-forced credentials.
+
+#### Password Reset and Multifactor Authentication Brute-Force Attacks
+
+- If a password reset process includes security questions and does not apply rate limiting to requests, we can target it in such an attack.
+- APIs often use SMS recovery codes or one time passwords (OTPs) in order to verity the identity of a user who want to reset their password. If no rate limiting is in place, you can start the recovery process and try to brute force these.
+  - Try doing the account recovery process on a test account and see what type of OTPs or codes are sent, then use this to craft a list to use in brute forcing.
+- Evasion techniques for rate limiting can be found in chapter 13.
+
+#### Password Spraying
+
+- Using a long list of users and a short list of passwords.
+  - If you know the lockout policy is 10 login attempts, for example, you could craft a password list of 9 of the most used passwords and spray the users with them to try and get as many accounts as possible without locking out any of the accounts.
+- Taking into account the providers password policy is helpful when crafting these lists.
+  - There's no point using a password that doesn't conform to the password policy, so lists like rockyou.txt are out.
+- Craft _path of small resistance (POS)_ passwords.
+  - These are simple enough to guess but complex enough to meet the minimum requirements of the password policy.
+  - POS type one:
+    - Obvious passwords like QWER!@#$, Password1!, etc.
+    - Formula based passwords like _Season_+_Year_+_Symbol_.
+      - Winter2024!, March212024!, etc.
+  - POS type two:
+    - Passwords directly related to the target.
+    - These would contain something like a capital letter, a number, a detail about the organization, and a symbol.
+    - ex. for twitter:
+      - Dorsey@2024, FuckElon!2024, etc.
+- The key to successful password spraying is to maximize your user list.
+- Burp Suites Cluster Bomb attack type is perfect for this as it lets you pass in a username list and a password list. This is heavily throttled in the Community Edition and it will take you a million years to complete if your list is as long as it should be.
+
+#### Including Base64 Authentication in Brute-Force Attacks
+
+- There are many reasons to base64 encode authentication payloads in the design of the API, security is not one of them.
+- If you notice that an API is encoding to base64 while testing authentication, adjust your payloads to be encoded in base64.
+- To do this in Burp Suite you must add a payload-processing rule.
+  - Under the Payloads tab, select Add > Encoded > Base64-encode, and click OK.
+
+### Forging Tokens
+
+- When implemented correctly, tokens are an excellent way for APIs to authenticate users and authorize them to access their resources.
+  - If anything goes wrong when generating, processing, or handling tokens, they become a hackers keys to the kingdom.
+- Tokens can be stolen, leaked, and forged.
+  - How to find and steal tokens in Chapter 6.
+- To forge tokens, start by analyzing how predictable an API provider's token generation process is.
+
+  - If you can discover any patterns in the tokens being provided, you may be able to forge your own or hijack another user's tokens.
+
+- Burp Suites Sequencer provides two methods for token analysis:
+  - Manually analyzing tokens provided in a text file
+  - Performing a live capture to automatically generate tokens.
+
+#### Manual Load Analysis
+
+- To perform manual load analysis, select the Sequencer module and choose the Manual Load tab.
+- Click Load and provide the list of tokens you want to analyze.
+- The more tokens in the list, the better the results.
+- Sequencer requires a minimum of 100 tokens for basic analysis and includes a bit-level analysis (automated analysis of the token converted to sets of bits).
+  - These sets of bits are then put through a series of tests involving compression, correlation, and spectral testing, as well as four tests based on the Federal Information Processing Standard (FIPS) 140-2 security requirements.
+
+_You can follow along with the examples by generating your won tokens or using the bad tokens hosted on [Hacking-APIs GitHub](https://github.com/hAPI-hacker/Hacking-APIs)._
+
+- A full analysis will also include _character-level analysis_:
+
+  - A series of tests performed on each character in the given position in the original form of the tokens.
+  - The tokens are then put through a character count analysis and a character transition analysis.
+  - The above two tests analyze how characters are distributed within a token and the differences between tokens.
+  - To perform a full analysis, Sequencer could require thousands of tokens, depending on the size and complexity of each individual token.
+
+- Once your tokens are loaded, you should see the total number of tokens loaded, the shortest token, and the longest token.
+- Click Analyze Now to generate a report.
+- The analysis report starts off with a summary of the findings.
+- Use the character position analysis chart to determine which characters do not change and the other characters that change often.
+  - This will be helpful in brute-forcing tokens.
+- If only the last 3 characters change often, you should only focus on brute-forcing the last three characters.
+
+#### Life Token Capture Analysis
+
+- **Burp Suite's Sequencer can automatically ask an API provider to generate 20,000 tokens for analysis.**
+  - To do this we simply intercept the provider's token generating process and then configure Sequencer.
+  - Burp Suite will repeat the token generation process up to 20,000 times to analyze the tokens for similarities.
+  - In Burp, intercept the request that initiates the token generation process.
+  - Select "Action" (or right-click the request) and then forward it to Sequencer.
+  - Within Sequencer, make sure you have the live capture tab selected, and under "Token Location Within Response", select the "Configure for the Custom Location" option.
+  - Highlight the generated token and click "OK".
+  - Select "Start Live Capture".
+  - If you select the Auto analyze checkbox, Sequencer will show the effective entropy results at different milestones.
+- On top of the this, you will have a large collection of tokens which could be useful in evading security controls (Chapter 13).
+  - If the API doesn't invalidate the tokens once new ones are created and the security controls use tokens as the method of identity, you now have 20,000 identities to help you avoid detection.
+- If there are token positions with low entropy, you can attempt to brute-force against those character positions.
+  - Reviewing tokens with low entropy could reveal certain patterns you could take advantage of.
+  - ex. If you notice that characters in certain positions only contain lowercase letters, or a certain range of numbers, you'll be able to enhance your brute-force attacks by minimizing the number of request attempts.
+
+#### Brute-Forcing Predictable Tokens
