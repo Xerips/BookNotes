@@ -2416,3 +2416,200 @@ _You can follow along with the examples by generating your won tokens or using t
   - ex. If you notice that characters in certain positions only contain lowercase letters, or a certain range of numbers, you'll be able to enhance your brute-force attacks by minimizing the number of request attempts.
 
 #### Brute-Forcing Predictable Tokens
+
+- This section shows how to brute force the authors bad tokens (Ab4dt0k3naa1, Ab4dt0k3nab2, Ab4dt0k3nab3, ...) where the first 9 characters remain static and the last 3 characters are dynamic.
+- These tokens were tested through Burp Suite and the results showed us that there was a clear pattern - you could also see this pattern by looking at a list of the tokens.
+- To brute force tokens based on what we've found you need to use a cluster bomb attack in Burp Suite where you would set the last 3 characters of the token as variables.
+
+  - The first 2 characters are always letters and the last character is always a number in these tokens.
+  - To brute-force them efficiently, we set the payload character set for the first 2 variables as abcd and the last payload character set as 0-9.
+
+- Using Wfuzz to avoid rate limiting:
+  - ex. `wfuzz -u vulnexample.com/api/v2/user/dashboard -hc 404 -H "token: Ab4dt0k3nFUZZFUZ2ZFUZ3Z" -z list,a-b-c-d -z list,a-b-c-d -z range, 0-9`
+
+### JSON Web Token Abuse
+
+- JSON Web Tokens (JWTs) are one of the more prevalent API token types because they operate across a wide variety of programming languages, including Python, Java, Node.js, and Ruby.
+- The tactics described in the previous sections could work against JWTs, but JWTs are vulnerable to several additional attacks as well.
+
+_Note: For testing purposes, you might want to generate your own JWTs. Use https://jwt.io, a site created by Auth0, to do so. Sometimes the JWTs have been configured so improperly that the API will accept any JWT._
+
+- If you've captured another user's JWT, you can try sending it to the provider and pass it off as your own.
+  - There is a chance that the token is still valid and you can gain access to the API as the user specified in the payload.
+- Normally, you are given a JWT when you register (or authenticate to) with an API. The token is then sent with every request.
+  - Browsers do this for you automatically.
+
+#### Recognizing and Analyzing JWTs
+
+- ex. JWT token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+- You can recognize JWTs from other tokens because they consist of three parts separated by periods:
+
+  - Header:
+    - A base64-encoded value that includes information about the type of token and hashing algorithm used for signing.
+    - Typically begins with ey.
+    ```
+    {
+      "alg": "HS256",
+      "typ": "JWT"
+    }
+    ```
+  - Payload:
+    - A base64-encoded value that includes things like user information.
+      - username
+      - user ID
+      - password
+      - email address
+      - date of token creation (iat)
+      - privilege level
+    - Typically begins with ey.
+    ```
+    {
+      "sub": "1234567890",
+      "name": "John Doe",
+      "iat": 1516239022
+    }
+    ```
+  - Signature
+    - The signature is the output of HMAC used for token validation and generated with the algorithm specified in the header.
+    - To create the signature, the API base64-encodes the header and payload and then applies the hashing algorithm and secret.
+    - The secret can be in the form of a password or a secret string, such as a 256-bit key.
+    - Without knowledge of the secret, the payload of the JWT will remain encoded.
+    ```
+    HMACSHA256(
+    base64UrlEncode(header) + "." +
+    base64UrlEncode(payload),
+    your-256-bit-secret)
+    ```
+
+- If you come across a JWT during recon, you can decode them using Burp Suites Decoder by selecting "Decode As" > "Base64".
+
+  - Alternatively, you could plug the JWT into [jwt.io's debugger](https://jwt.io/#debugger-io) to decode it.
+  - You may get lucky when decoding JWTs and find useful information like username and user ID, or even username and password combinations.
+
+- In the above example, the hashing algorithm is HMAC using SHA256.
+- HMAC is primarily used to provide integrity checks similar to digital signatures.
+- Another common hashing algorithm is RSA256, RSA using SHA256, which is an asymmetric hashing algorithm.
+  - Additional info from [Microsoft API Docs](https://docs.microsoft.com/en-us/dotnet/api/system.security.cryptography).
+- Using a JWT with a symmetric key algo will require the consumer and provider to have the same single key.
+- Using asymmetric key algos, the provider and consumer will use two different keys.
+  - Understanding the difference between symmetric and asymmetric encryption will give you a boost when performing a JWT algorithm bypass attack.
+- If the algorithm value is "none", the token has not been signed with any hashing algorithm.
+
+**jwt-tool / jwt_tool**
+
+- To quickly analyze JWTs you can use the jwt-tool (if installing from the AUR or black arch repos) or jwt_tool if you've cloned it from the [github](https://github.com/ticarpi/jwt_tool).
+- ex. `jwt-tool <JWT>`
+  - This will neatly print out the header and payload values of the JWT.
+- You can use jwt-tool to perform a "Playbook Scan" that can scan a web application for common JWT vulnerabilities.
+  - `jwt-tool -t https://target-site.com/ -rc "Header: JWT_Token" -M pb`
+  - To use this command, you'll need to know what you should expect as the JWT header. When you have this information, replace "Header" with the name of the header and "JWT_Token" with the actual token value.
+
+#### The None Attack
+
+- Finding a JWT using "none" as its algorithm is an easy win.
+- After decoding the token, you should be able to see everything in the header, payload, and signature.
+  - Not only can you read everything in clear text, but you can also change the payload to whatever you like.
+  - Changing the username to likely admin usernames like root, admin, administrator, test, adm, etc. and submit them until you get a hit.
+  - You'll just need to re-encode the payload after changing it and reinsert it into the second position of the JWT.
+- In this case, you can also delete the signature as it's not in use (everything after the second period.
+
+#### The Algorithm Switch Attack
+
+- If the API provider isn't checking the JWTs properly, you may be able to trick a provider into accepting a JWT with an altered algorithm.
+- Try sending a JWT without the signature.
+  - Leave the second period in place, but remove everything thereafter to delete the signature section.
+- Try changing the JWT `"alg":` value to `"none"` in the header section, then re-encode the header and reinsert it into the JWT.
+  - Submit the new JWT to the provider and see if it's accepted.
+- You can use jwt-tool to create a variety of tokens with the algorithm set to "none" with:
+  `jwt-tool <JWT_Token> -X a`
+
+  - Check out the options for jwt-tool with `jwt-tool --help`.
+
+- A more likely scenario than the provider accepting no algorithm is that they accept multiple algorithms.
+- If the provider uses RS256 but doesn't limit the acceptable algorithm values, we could alter the algorithm to HS256.
+  - RS256 is a asymmetric encryption scheme, meaning we need both the provider's private key and a public key in order to accurately hash the JWT signature.
+  - HS256 is a symmetric encryption scheme, so only one key is used for both the signature and verification of the token.
+    - If you can discover the providers RS256 public key and then switch the algorithm from RS256 to HS256, there is a chance you may be able to leverage the RS256 public key as the HS256 key.
+- jwt-tool can make this attack easier.
+  - It uses the format `jwt-tool <JWT_Token> -X k -pk public-key.pem` - You'll need to save the public key as a .pem file on your attacking machine to use this.
+  - Running this command will provide you with a new token to use against the API.
+  - If the provider is vulnerable, you'll be able to hijack other tokens, since you now have the key required to sign tokens.
+    - Repeat the process to create new tokens based on other API users, focusing particularly on admin ones.
+
+#### The JWT Crack Attack
+
+- The JWT Crack attack attempts to crack the secret used for the JWT signature hash, giving us full control over the process of creating valid JWTs.
+- Hash-cracking attacks like this take place offline, and do not interact with the provider.
+  - ie. use a big wordlists to try as many secrets as possible.
+- If you're performing a long-term brute-force attack of every character possible, you may want to use Hashcat for it's ability to use dedicated GPU power instead of jwt-tool.
+  - That being said, jwt-tool can test 12 million passwords in under a minute.
+    `jwt-tool <JWT_Token> -C -d /path/to/wordlist.txt`
+
+## Chapter 9: Fuzzing
+
+- The secret to finding APi vulnerabilities is knowing where to fuzz and what to fuzz with.
+  - You'll likely find API vulnerabilities by fuzzing input sent to API endpoints.
+
+### Effective Fuzzing
+
+- API fuzzing is the process of sending requests with various types of input to an endpoint in order to provoke an unintended result.
+  - Input could include:
+    - symbols
+    - numbers
+    - emojis
+    - decimals
+    - hexadecimal
+    - system commands
+    - SQL input
+    - NoSQL input
+    - etc.
+  - If the API has not implemented validation checks to handle harmful input, you could end up with a verbose error indicating that your fuzzing caused a denial of service.
+- ex. A banking API call intended to allow users to transfer money from one account to another:
+
+  ```
+  POST /account/balance/transfer
+  Host: bank.com
+  x-access-token: hapi_token
+
+  {
+  "userid": 12345,
+  "account": 224466,
+  "transfer-amount": 1337.25
+  }
+  ```
+
+  - You could easily set up Burp or Wfuzz to submit huge payloads as the `userid`, `account`, or `transfer-amount` values.
+    - But! This could set off defensive mechanisms resulting in stronger rate-limiting or your token being blocked.
+    - If no defence mechanisms exists to prevent this, this is fine to do.
+    - If defence mechanisms are in place, it's best to send targeted requests to one value at a time.
+  - Try sending payloads that the application would not expect:
+    - A value in the quadrillions for the `transfer-amount`
+    - A string of letters instead of numbers
+    - A large decimal number or a negative number
+    - Null values like null, (null), %00, and 0x00
+    - Symbols like !@#$%\*^&():';;|,.?>'
+    - Do this to try and illicit a verbose error message.
+
+- If inputs don't have sufficient input handling and error handling, they can often lead to exploitation.
+  - Examples of this sort of API input include fields involved in requests used for authentication forms, account registration, uploading files, editing web application content, editing user profile information, editing account information, managing users, searching for content, etc.
+
+#### Choosing Fuzzing Payloads
+
+- _Generic fuzzing payloads_ are those we've discussed so far and contain symbols, null bytes, directory traversal strings, encoded characters, large numbers, long strings, etc.
+- _Targeted fuzzing payloads_ are aimed to provoke a response from specific technologies and types of vulnerabilities.
+  - API object or variable names.
+  - Cross-site scripting (XSS) payloads.
+  - Directory brute forcing
+  - file extensions.
+  - HTTP request methods.
+  - JSON or XML data.
+  - SQL or NoSQL commands.
+  - OS specific commands.
+- You generally move from generic fuzzing to targeted fuzzing based on what the generic fuzzing reveals.
+- Seclists is great for fuzzing payloads (wordlists) and can be downloaded through most package managers or found at https://github.com/danielmiessler/SecLists.
+  - big-list-of-naughty-strings.txt is excellent at causing useful responses.
+- Fuzzdb is another good source for fuzzing payloads: https://github.com/fuzzdb-project/fuzzdb .
+- Wfuzz has payloads as well that can be found at https://github.com/xmendez/wfuzz.
+
+#### Detecting Anomalies
