@@ -2613,3 +2613,137 @@ _Note: For testing purposes, you might want to generate your own JWTs. Use https
 - Wfuzz has payloads as well that can be found at https://github.com/xmendez/wfuzz.
 
 #### Detecting Anomalies
+
+- When fuzzing, you're attempting to cause the API or its supporting technology to send you information that you can leverage in additional attacks.
+- When API request payloads are handled properly, you should receive some sort of HTTP response code and message indicating that your fuzzing did not work.
+  - ex.
+  ```
+  HTTPS/1.1 400 Bad Request
+  {
+      "error": "number required"
+  }
+  ```
+  - This response shows that the developers configured the API properly to handle the request sent and prepared a tailored response.
+- When input is not handled properly and causes and error, the server will often return the error in the response.
+
+  - ex.
+
+  ```
+  HTTP/1.1 200 OK
+  --snip--
+
+  SQL Error: There is an error in your SQL syntax.
+  ```
+
+  - This response reveals that you're interacting with an API that does not handle input properly and the backend of the app is utilizing an SQL database.
+
+- When fuzzing, you're dealing with hundreds or thousands of responses, so you need to filter your responses in order to detect anomalies.
+  - Do this by understanding what ordinary responses look like.
+  - Establish a baseline by sending standard and correctly handled requests and/or by sending requests you expect to fail.
+    - This paints a picture of how expected and unexpected requests are handled by the API.
+  - Analyze and filter these requests by status code, response size, response content, time, or any other metrics that seem to point towards like behavior.
+  - Once you have these baselines, look for anomalies and figure out what input caused the difference.
+  - You can use Burp's Comparer to get a side-by-side view of responses that have small differences (you can compare more than 2!).
+    - Use the "Sync views" toggle at the bottom right of Comparer to highlight differences between responses.
+
+### Fuzzing Wide and Deep
+
+**Fuzzing Wide**
+
+- The act of sending an input across all of an API's unique requests in an attempt to discover a vulnerability.
+- Testing a mile wide and an inch deep.
+- Used to test for issues across all unique requests.
+- Good for testing for improper asset management, finding all valid request methods, token-handling issues, and other information disclosure vulns.
+
+**Fuzzing Deep**
+
+- The act of thoroughly testing an individual request with a variety of inputs, replacing headers, parameters, query strings, endpoint paths, and the body of the request with your payloads.
+- Testing an inch wide and a mile deep.
+- Good for testing for BOLA, BFLA, injection, and mass assignment.
+
+- Testing wide and deep can help you test every feature of larger APIs.
+- APIs can vary greatly in size.
+  - Some APIs only have a few endpoints and a handful of unique requests so testing isn't a lengthy process.
+  - Others have many endpoints and unique requests.
+    - Alternatively, a single request can be filled with many headers and parameters.
+
+#### Fuzzing Wide with Postman
+
+- Postman's Collection Runner tool makes it easy to run tests against all API requests.
+  - If an API includes 150 unique requests across all the endpoints, you can set a variable to a fuzzing payload entry and test it across all 150 requests.
+  - Easy to do once you've built a collection or imported API requests into Postman.
+  - ex. You may use this strategy to test for whether the requests fail to handle various "bad" characters.
+    - Send a single payload across the API and check for anomalies.
+- Create a Postman environment in which to save a set of fuzzing variables.
+
+  - This lets you seamlessly use the environment variables from one collection to the next.
+  - Once the variables are set just save or update the environment.
+    [!Fuzzing Variables](https://github.com/Xerips/BookNotes/tree/main/HackingAPIs/fuzzing_variable.png)
+  - You can use the variables shown above in your requests by selecting the environment in the top right of the info pane (Fuzzing APIs), then inserting the variable with {{<variable name ex. fuzz1>}}
+
+- Another useful feature of Postman is "Find and Replace" which can be found on the bottom left of the screen.
+  - This allows you to search a collection (or all collections) and replace the search term with a value of your choice.
+- If attacking Pixi API, for example, you will notice many placeholder parameters use tags like \<email>, \<number>, \<string>, and \<boolean>.
+
+  - You can search and replace these placeholders with values of your choice, or use one of the fuzzing variables, like {{fuzz1}}.
+
+- You can use the "Test" panel to help detect anomalies.
+  - I'm not super familiar with Postman, but it seems like by "Test panel" the author means test scripts. On a request you will see the "Scripts" panel, which you can "Use JavaScript to write test, visualize responses, and more."
+  - It seems as though a lot of the GUI layout has changed since the author wrote the book, so it may be best to familiarize yourself with Postman through their learning center.
+  - ex. test script:
+  ```
+  pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+  });
+  ```
+  - With this test, Postman will check that responses have a status code of 200, and when a response is 200, it will pass the test.
+  - You can easily customize this test by replacing 200 with another status code.
+  - An easy way to get a baseline is to unselect the checkbox "Keep Variable Values". With this turned off, your variables won't be used in the first collection run.
+
+#### Fuzzing Deep with Burp Suite
+
+- Fuzz deep whenever you want to drill down into requests that appear interesting or demonstrate anomalies.
+  - Use Burp Suite or Wfuzz
+- You may initially craft your requests in Postman, make sure to proxy the traffic to Burp Suite.
+- Start Burp, configure the Postman proxy settings, send the request, and make sure it was intercepted. Then forward the request to Intruder.
+- Using the position markers, select every field's value to send a payload list as each of those values.
+- A sniper attack will cycle a single wordlist through each attack position.
+- When fuzzing it is always worthwhile to request the unexpected - as mentioned previously.
+- Another useful tip is to send the expected value and include a fuzzing attempt following that value.
+  - This can help bypass input validation while still seeing if you can fuzz the parameter.
+  - ex. `"user": "hapi@hacker.com§test§"`
+  - If the above still results in a "not a valid email" error message, you may want to try a different payload or move on to a different field.
+- When you receive the results, organize the requests by column: status code, length of the response, request number, payload, etc, to try and pick up on anomalies.
+- Find interesting responses like, `SyntaxError: Unexpected token in JSON at position 32`, and use them to improve your payloads to narrow down exactly what is causing the error.
+  - ex. If the resulting responses indicate a database error, you could use payloads that target those databases.
+  - If the error is related to an unexpected JSON token, try using JSON fuzzing payloads.
+
+#### Fuzzing Deep with Wfuzz
+
+- It's best to use Wfuzz if you only have the CE of Burp Suite because of the rate limiting.
+- Wfuzz is considerably faster than Burp Suite, so you can increase the payload size.
+- ex. Using SecLists payload called `big-list-of-naughty-strings.txt` which contains 500 values:
+  ```
+  wfuzz -z file,/path/to/big-list-of-naughty-strings.txt -H "Content-Type: application.json" -H "x-access-token: [...]" --hc 400 -X PUT -d "{
+    \"user\": \"FUZZ\",
+    \"pass\": \"FUZZ\",
+    \"id\": \"FUZZ\",
+    \"name\": \"FUZZ\",
+    \"is_admin\": \"FUZZ\",
+    \"account_balance\": \"FUZZ\",
+  }" -u http://<target>:<port>/path/to/api/endpoint
+  ```
+  - You can proxy this request through Burp Suite by using the `-p 127.0.0.1:8080` flag and value. This will help you troubleshoot the command if you're having issues.
+  ```
+  wfuzz -z file,/path/to/big-list-of-naughty-strings.txt -H "Content-Type: application.json" -H "x-access-token: [...]" -p 127.0.0.1:8080 --hc 400 -X PUT -d "{
+    \"user\": \"FUZZ\",
+    \"pass\": \"FUZZ\",
+    \"id\": \"FUZZ\",
+    \"name\": \"FUZZ\",
+    \"is_admin\": \"FUZZ\",
+    \"account_balance\": \"FUZZ\",
+  }" -u http://<target>:<port>/path/to/api/endpoint
+  ```
+  - Once it's proxied over, inspect the intercepted request and send it to Repeater to check for mistakes.
+
+#### Fuzzing Wide for Improper Asset Management
