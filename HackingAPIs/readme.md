@@ -2959,3 +2959,555 @@ Table 10-1 Valid requests for Resources and the Equivalent BOLA test. All reques
 - If you're able to exploit BLFA in that situation, it will have become a privilege escalation attack.
 
 #### Testing BFLA in Postman
+
+- Begin your BFLA testing with authorized requests for UserA's resources.
+- ex. If testing whether you could modify another user's pictures in a social media app, a simple request like the following will do:
+  ```
+  GET /api/picture/2
+  Token: UserA_token
+  ```
+  - This request tells us that resources are identified by numeric values in the path.
+  - Moreover, the response indicates that the username of resource ("UserA") matches the request token.
+  ```
+  200 OK
+  {
+      "_id": 2,
+      "name": "development flower",
+      "creator_id": 2,
+      "username": "UserA",
+      "money_made": 0.35,
+      "likes": 0
+  }
+  ```
+- Because this is a social media app, being able to access another users picture with a GET request wouldn't constitute a BOLA. It's an intended feature.
+- UserB shouldn't be able to delete the picture that belonged to UserA. That is what crossed into BFLA territory.
+- In Postman, try sending a DELETE request for UserA's resource by using UserB's token.
+  - If it successfully deletes UserA's resource indicated in the response, confirm that it has been deleted by checking on UserA's account, or send a follow up GET request for the resource.
+  - If confirmed, this is a significant finding.
+
+**Priv Esc**:
+
+- Documentation greatly simplifies finding privilege escalation related BFLA vulnerabilities.
+- Administrative actions may also be clearly labelled in a collection.
+- You could also always go through the process of reverse engineering administrative functionality.
+  - Fuzz for admin paths.
+- Start testing for BFLAs by making administrative requests as a low-privileged user.
+
+  - If an API allows administrators to search for users with a POST request, try making that exact admin request to see if any security controls are in place to prevent you from succeeding.
+  - Request:
+
+  ```
+  POST /api/admin/find/user
+  Token: LowPriv-Token
+
+  {"email": "hapi@hacker.com"}
+  ```
+
+  - Response:
+
+  ```
+  200 OK HTTP/1.1
+
+  {
+  "fname": "hAPI",
+  "lname": "Hacker",
+  "is_admin": false,
+  "balance": "3737.50",
+  "pin": 8675
+  }
+  ```
+
+- The ability to search for users and gain access to another user's sensitive information was meant to be restricted to only those with an administrative token.
+- By making a request to the /admin/find/user endpoint, you can test to see if there is any technical enforcement.
+- Admin requests will often generate more sensitive information than a lower privileged request.
+- If the initial request isn't successful, try using a different request method: POST instead of PUT. Be careful not to damage anything.
+
+### Authorization Hacking Tips
+
+"Attacking a large-scale API with hundreds of endpoints and thousands of unique requests can be fairly time-consuming. The following tactics should help you test for authorization weaknesses across an entire API: using Collection variables in Postman and using the Burp Suite Match and Replace feature."
+
+#### Postman's Collection Variables.
+
+- You can use Postman to perform variable changes across a collection, setting the authorization token for your collection as a variable.
+
+1. Begin by testing various requests for your resources to make sure they work properly as UserA.
+2. Replace the token variable with the UserB token.
+
+- To help you find anomalous responses, use a Collection test to locate 200 response codes or the equivalent for your API.
+- In Collection Runner, select only the requests that are likely to contain authorization vulnerabilities.
+  - Prioritize requests that contain private information belonging to UserA.
+  - Launch the Collection Runner and review the results looking for instances where UserB's token successfully generated a response for the resources.
+  - These successful responses likely indicate either BOLA or BFLA vulnerabilities and should be investigated further.
+
+#### Burp Suite Match and Replace.
+
+- Where to find the feature: Proxy > Options > Match and Replace.
+- Burp Suites history will populate with unique requests while attacking an API (If you're using Burp to browse/interact and have Postman Proxying through Burp).
+- You can use the Match and Replace feature to perform a large scale replacement of a variable like an authorization token in these populated requests.
+- Start by collecting several requests in your history as UserA, focusing on actions that should require authorization.
+  - Requests that involve a user's account and resources.
+- Next, match and replace the authorization headers with UserB's and repeat the requests.
+
+## Chapter 11: Mass Assignment
+
+- An API is vulnerable to mass assignment if the consumer is able to send a request that updates or overwrites server-side variables.
+- If an API accepts client input without filtering or sanitizing it, an attacker can update objects with which they shouldn't be able to interact.
+  - ex. A banking API might allow users to update the email address associated with their account, but a mass assignment vulnerability might let the user send a request that updates their account balance as well.
+
+### Finding Mass Assignment Targets
+
+- One of the most common places to discover and exploit mass assignment vulnerabilities is in API requests that accept and process client input.
+  - Account registration, profile editing, user management, and client management are all common functions that allow clients to submit input using the API.
+
+#### Account Registration
+
+- The account registration process is a particularly juicy place to look for mass assignment vulnerabilities because it may allow you to register as an administrative user.
+- If the registration process relies on a web application, the end user would fill in standard fields with information like their desired username, email address, phone number, and account password.
+- ex.
+  ```
+  POST /api/v1/register
+  --snip--
+  {
+  "username": "hAPI_hacker",
+  "email": "hapi@hacker.com",
+  "password": "Password!"
+  }
+  ```
+- Once you've intercepted a registration request, check whether you can submit additional values in the request.
+- A common version of this attack is to upgrade an account to an administrator role by adding a variable that the API provider likely uses to identify admins:
+  ```
+  POST /api/v1/register
+  --snip--
+  {
+  "username": "hAPI_hacker",
+  "email": "hapi@hacker.com",
+  "admin": true,
+  "password": "Password!"
+  }
+  ```
+- If accepted by the API provider, this request will turn the account being registered into an admin-level account.
+
+#### Unauthorized Access to Organizations
+
+- You can also use mass assignment to gain unauthorized access to other organizations.
+- If your user objects include an organizational group that allows access to company secrets or other sensitive information, you can attempt to gain access to that group.
+- ex.
+
+```
+POST /api/v1/register
+--snip--
+{
+  "username": "hAPI_hacker",
+  "email": "hapi@hacker.com",
+  "org": "§CompanyA§",
+  "password": "Password!"
+}
+```
+
+- If you can assign yourself to other organizations, you will likely be able to gain unauthorized access to the other group's resources.
+- To perform this attack, you'll need to know the names or IDs used to identify the companies in requests.
+  - If the `"org"` value is a number, you can brute force this like you do testing for BOLA.
+- Do not limit your search for mass assignment vulnerabilities to the account registration process.
+  - Other API functions are capable of being vulnerable.
+  - Test other endpoints used for resetting passwords, updating account, group, or company profiles, or any other endpoints where you may be able to assign yourself additional access.
+
+### Finding Mass Assignment Variables
+
+- The challenge with mass assignment attacks is that there is very little consistency in the variables used between APIs.
+- If the API provider has some method for designating accounts as administrator, you can be sure that they also have some convention for creating or updating variables to make a user an administrator.
+  - Fuzzing can speed up your search for mass assignment variables, but unless you understand your target's variables, this technique can be a shot in the dark.
+
+#### Finding Variables in Documentation
+
+- Look for sensitive variables in the API documentation.
+- Specifically in sections focused on privileged actions.
+- The documentation can give you a good indication of what parameters are included within JSON objects.
+- ex. Search for how a low-privileged user is created compared to how an administrator account is created.
+  - Standard user account creation request:
+  ```
+  POST /api/create/user
+  Token: LowPriv-User
+  --snip--
+  {
+  "username": "hapi_hacker",
+  "pass": "ff7ftw"
+  }
+  ```
+  - Admin account:
+  ```
+  POST /api/admin/create/user
+  Token: AdminToken
+  --snip--
+  {
+  "username": "adminthegreat",
+  "pass": "bestadminpw",
+  "admin": true
+  }
+  ```
+  - The admin request is submitted to an admin endpoint, uses an admin token, and includes the parameter `"admin": true`.
+  - You could also trick the API into setting a low priv account to an admin account by adding `"admin": true` to the LowPriv account.
+    - You could try this as well as trying to set the `Token: AdminToken` header if that fails.
+
+#### Fuzzing Unknown Variables
+
+- Another common scenario is that you'll perform an action in a web app, intercept the request, and locate several bonus headers or parameters within it, like:
+
+```
+POST /create/user
+--snip--
+{
+"username": "hapi_hacker"
+"pass": "ff7ftw",
+"uam": 1,
+"mfa": true,
+"account"; 101
+}
+```
+
+- Parameters used in one part of an endpoint might be useful for exploiting mass assignment using a different endpoint.
+- When you don't understand the purpose of a certain parameter, experiment with it.
+- Try setting `uam` to zero, `mfa` to false, and `account` to every number between 0 and 101, then check the responses.
+- Try using the various fuzzing payloads from previous chapters.
+- Build up a wordlist with the parameters you collect from an endpoint and fuzz by submitting requests with those parameters included.
+- Account creation is a great place to do this, but don't limit yourself.
+
+#### Blind Mass Assignment Attacks
+
+- If you cannot find variable names in the locations discussed, you could perform a blind mass assignment attack.
+- Blind Mass Assignment Attacks attempt to bute-force possible variable names through fuzzing.
+- Send a single request with many possible variables, like the following:
+
+```
+POST /api/v1/register
+--snip--
+{
+"username": "hAPI_hacker",
+"email": "hapi@hacker.com"
+"admin": true,
+"admin": 1,
+"isadmin": true,
+"role": "admin",
+"role": "administrator",
+"user_priv": "admin",
+"password": "Password1!"
+}
+```
+
+- If the API is vulnerable, it might ignore the irrelevant variables and accept the variable that matches the expected name and format.
+
+### Automating Mass Assignment Attacks with Arjun and Burp Suite Intruder
+
+- Arjun does parameter fuzzing.
+- ex: `arjun --headers "Content-Type: application/json]" -u http://vulnhost.com/api/register -m JSON --include='{$arjun$}'`
+- As a result, Arjun will send a series of request with various parameters from a wordlist to the target host.
+- Arjun will then narrow down likely parameters based on deviations of response lengths and response codes and provide you with a list of valid parameters.
+- If you run into issues with rate limiting, you can use the Arjun `--stable` option to slow down the scans.
+- Many APIs prevent you from sending too many parameters in a single request, as a result, you might receive on of several HTTP status codes in the 400 range, such as 400 Bad Request, 401 Unauthorized, or 413 Payload Too Large.
+  - Instead of sending a signel large request, you could cycle through possible mass assignment variables over many requests.
+  - This can be done by setting up the request in Burp Suite's Intruder with the possible mass assignment values as the payload:
+  ```
+  POST /api/v1/register
+  --snip--
+  {
+  "username": "hAPI_hacker",
+  "email": "hapi@hacker.com",
+  §"admin": true§,
+  "password": "Password1!"
+  }
+  ```
+
+### Combing BFLA and Mass Assignment
+
+- If you find a BFLA vuln that allows you to update other user's accounts, try combining this ability with a mass assignment attack.
+- ex. A BFLA vuln is found that only allows users to edit basic profile information such as usernames, addresses, cities, and regions.
+
+```
+PUT /api/v1/account/update
+Token: UserA-Token
+--snip--
+{
+"username": "Ash",
+"address": "123 C St.",
+"city": "Pallet Town",
+"region": "Kanto",
+}
+```
+
+- On its own, this vulnerability would allow attackers to deface other user accounts.
+- Performing a Mass Assignment attack with this request could make the BFLA finding more significant.
+- ex. The attacker analyzes other GET requests in the APi and notices that other requests include parameters for email and multifactor authentication (MFA) settings. The attacker also found another user Broke, whose account he would like to access:
+
+```
+PUT /api/v1/account/update
+Token: UserA-Token
+--snip--
+{
+"username": "Brock",
+"address": "456 Onyx Dr",
+"city": "Pewter Town",
+"region": "Kanto",
+"email": "ashe@email.com",
+"mfa": false
+}
+```
+
+- This request, if it were successful, would disable Brock's MFA settings, and replace Brock's email with Ash's email.
+  - Changing the email allows Ash to perform a password reset - Likely a POST or PUT request sent to `/api/v1/account/reset` or something similar.
+- Pwned.
+
+## Chapter 12: Injection
+
+- Injection attacks are typically named after the technology they are targeting.
+- SQL Injection exploits SQL databases.
+- NoSQL Injection exploits NoSQL databases.
+- Cross-site Scripting (XSS) attacks insert scripts into web pages that run on a user's browser.
+- Cross-API Scripting (XAS) leverages third-party applications ingested by the API you're attacking.
+- Command Injection is an attack against the web server operating system to gain RCE.
+
+### Discovering Injection Vulnerabilities
+
+- First start by finding places where APIs accept user input.
+  - You can do this through fuzzing and then analyzing the responses you receive.
+- You should attempt injection attacks against all potential inputs and especially within the following:
+  - API keys
+  - Tokens
+  - Headers
+  - Query strings in the URL
+  - Parameters in POST/Put requests
+- How you fuzz is determined by how much information you know about your target.
+  - If you're not worried about making noise, you could send a variety of fuzzing inputs likely to cause an issue in many possible supporting technologies.
+  - The more you know about the API, the better the attacks will be.
+  - If you know what database the application uses, what operating system is running on the web server, or the programming language in which the app was written, you'll be able to submit targeted payloads aimed at detecting vulnerabilities in those particular technologies.
+- After sending the fuzzing requests, hunt for responses that contain a verbose error message or some other failure to properly handle the request.
+  - In particular, look for any indication that your payload bypassed security controls and was interpreted as a command at the OS, Programming, or database level.
+  - This could include clear messages like "SQL Syntax Error" or be as subtle as an increase in the processing time of the request.
+  - You could get lucky and receive an entire verbose error dump that can provide you with plenty of details about the host.
+- When you find a vulnerability, test every similar endpoint for that vuln.
+  - If you find a vulnerability in `/file/upload` it is likely that all file upload features will be vulnerable: `/image/upload`, `/account/upload`.
+- Several of these injection attacks have been around for decades.
+- The only thing unique about API injection is that the API provides a newer delivery method for the attack.
+- Injection vulns are well known and often have a big impact on application security so they are often well-protected against.
+
+### Cross-Site Scripting (XSS)
+
+- XSS is a classic web application vulnerability that has been around for decades.
+- In an XSS attack, the attacker inserts a malicious script into a website by submitting user input that ets interpreted as JavaScript or HTML by a user's browser.
+- Often XSS attacks inject a pop-up message into a web page that instructs a user to click a link that redirects them to the attacker's malicious content.
+- In a web application, executing an XSS attack normally ocnsists of injecting XSS payloads into different input fields on the site.
+- In testing APIs for XSS, your goal is to find an endpoint that allows you to submit requests that interact with the frontend web application.
+- If the application doesn't sanitize the request's input, the XSS payload might execute the next time a user visits the application's page.
+- For the attack to succeed, the API must interact with a web browser, which is not always the case.
+- ex. XSS payloads:
+  `<script>alet("xss")</script>`
+  `<script>alert(1);</script>`
+  `<%00script>alert(1)</%00script>`
+  `SCRIPT>alert("XSS");///SCRIPT>`
+
+  - If you want to learn more about XSS and XSS payloads, check out my BookNotes on [BugBountyBootCamp - XSS](https://github.com/Xerips/BookNotes/tree/main/BugBountyBootcamp#cross-site-scripting). There are a lot of techniques in that book to supplement what is found here.
+  - Each of these scripts attempts to launch an alert in a browser, and the variations are for attempting input validation.
+
+- API-specific XSS payloads resources:
+
+  - [Payload Box XSS payload list](https://github.com/payload/box/xss-payload-list): Contains over 2,700 XSS scripts that could trigger a successful XSS attack.
+  - [Wfuzz wordlist](https://github.com/xmendez/wfuzz/tree/master/wordlist): A shorter wordlist included with one of our primary tools. Useful for a quick check for XSS.
+  - [NetSec.expert XSS payloads](https://netsec.expert): Contains explanations of different XSS payloads and their use cases. Useful to better understand each payload and conduct more precise attacks.
+
+- If the API implements some form of security, many of your XSS attempts shuld produce similar results, like 405 Bad Input or 400 Bad Request.
+  - Watch closely for outliers, if you find requests that result in some form of successful response, try refreshing the relevant web page in your browser to see if the XSS attempt affected it.
+- When reviewing the web apps for potential API XSS injection points, look for requests that include client input and are used to display information within the web app:
+  - Updating user profile information
+  - Updating social media "like" information
+  - Updating e-commerce store products
+  - Posting to forums or comment sections
+  - Search the web application for requests and then fuzz them with an XSS payload.
+
+### Cross-API Scripting (XAS)
+
+- XAS is cross-site scripting performed across APIs.
+- ex. hAPI Hacking blog has a sidebar powered by a LinkedIn newsfeed.
+  - The blog has an API connection to LinkedIn such that when a new post is added to the LinkedIn newsfeed, it appears in the blog sidebar as well.
+  - If the data received from LinkedIn isn't sanitized, there is a chance that an XAS payload added to a LinkedIn newsfeed could be injected into the blog.
+  - To test this, you would post a LinkedIn newsfeed update containing a XAS script and check whether it successfully executes on the blog.
+- XAS has more complexities than XSS, because the web application must meet certain conditions in order for XAS to succeed.
+  - The web app must poorly sanitize the data submitted through its own API or a third-party one.
+  - The API input must also be injected into the web app in a way that would launch a script.
+  - If you're attempting to attack your target through a third-party API, you may be limited in the number of requests you can make through its platform.
+- The major challenge for XAS is the same as XSS, bypassing input validation.
+  - You can borrow from XSS payloads to try and bypass XAS input validation.
+- In addition to testing third-party APIs for XAS, you might look for vulnerability in cases when a provider's API adds content or makes changes to its web application.
+
+  - ex. hAPI Hacking blog allows users to update their user profiles through either a browser or a POST request to the API endpoint `/api/profile/update`.
+  - The hAPI Hacking blog security team may have spent all their time protecting the blog from input provided using the web app, completely overlooking the API as a threat vector.
+  - To test this, you might try to send a typical profile update request containing your payload in one field of the POST request:
+
+  ```
+  POST /api/profile/update HTTP/1.1
+  Host: hapihackingblog.com
+  Authorization: hAPI.hacker.token
+  Content-Type: application/json
+
+  {
+  "fname": "hAPI",
+  "lname": "Hacker",
+  "city": "<script>alert("xas")</script>"
+  }
+  ```
+
+  - If the request succeeds, load the web page in a browser to see whether the script executes.
+  - If the API implements input validation, the server might issue an HTTP 400 Bad Request response, preventing you from sending scripts as payloads.
+    - In this case, try using Burp Suite or Wfuzz to send a large list of XAS/XSS scripts in an attempt to locate some that don't results in a 400 response.
+
+- Another XAS tip is to try altering the `Content-Type` header to induce the API into accepting an HTML payload to spawn the script:
+  `Content-Type: text/html`
+- XAS requires a specific situation to be in place in order to be exploitable.
+  - API defenders often do a better job preventing XSS and SQL injection because they have been around for 20+ years.
+  - XAS is newer and more complex so there may be a better chance of sneaking these through.
+
+### SQL Injection
+
+- SQL injection occurs when a remote attacker can interact with the application's backend SQL by leveraging user input endpoints to send malicious payloads.
+- Successful SQL injection allows attackers to obtain or delete sensitive information housed on the SQL server such as credit card numbers, usernames, passwords, and other gems.
+  - Attackers could also use access to the SQL server to to bypass authentication and even gain system access. Don't have a valid login and password? Make your own!
+- SQL injection has also been around forever, and its prevalence was diminishing before APIs presented a new way to perform injection attacks.
+  - But because of the severity of impact of SQL injection attacks, API defenders have been keen on detecting and preventing SQL injections over APIs and so these attacks are generally not likely to succeed.
+  - Sending SQL payloads will often lead to having your authorization token banned.
+- You can detect SQL database presence in less obvious ways than fuzzing with SQL injection payloads.
+  - The best way to do this is to submit gibberish or different data types when sending a request in order to tease out a SQL error message.
+  - If the API expects a key value pair where the value is an integer, send a string; if it expects a boolean submit an integer; etc.
+  - Use a bad character list to fuzz these endpoints for verbose error messages. Fuzz wide with this looking for anything and everything that may indicate weak security on database endpoints - even unexpected ones.
+- When looking for requests to target for database injections, seek out those that allow client input and can be expected to interact with a database.
+- If you find an endpoint that contains data that is likely to be stored in a database, it is also likely that a PUT request will allow us to update it.
+
+#### Manually Submitting Metacharacters
+
+- Metacharacters are characters that SQL treats as functions rather than as data.
+  - If an API endpoint doesn't filter SQL syntax from API requests, and SQL queries passed to the database from the API will execute.
+  - `--` tells the SQL interpreter to ignore the following input because it's a comment. It is particularly useful in crafting payloads.
+  - Other SQL metacharacters that can cause issues:
+  - `'`, `''`, `;%00`, `-- -`, `""`, `;`, `' Or '1`, `' OR 1 -- -`, `" OR "" = "`, `" OR 1 = 1 -- -`, `' OR '' = '`, `OR 1=1`.
+  - A null byte like `;%00` could cause a verbose SQL-related error.
+  - `OR 1=1` is a conditional statement that literally means "or the following statement is true", and results in a true condition for the given SQL query. This can return quite a lot if it works.
+  - Single and Double quotes are used in SQL to indicate the beginning and ending of a string, so quotes could cause an error or a unique state.
+    - Single and Double quotes are used to escape the current query to cause an error or to append your own SQL query.
+- Imagine that the backend is programmed to handle the API authentication process with an SQL query like the following:
+  `SELECT * FROM userdb WHERE username = 'hAPI_hacker' AND password = 'Password1!'`
+  - If instead of a password, we supplied the API with the value `' OR 1=1-- -`:
+    `SELECT * FROM userdb WHERE username = 'hAPI_hacker' OR 1=1-- -`
+  - This would be interpreted as selecting the user with a true statement and skipping the password requirement because the password requirement has been commented out.
+  - If successful, the query would no longer perform a check for the password at all, and the user would be granted access.
+
+#### SQLmap
+
+- A great way to automatically test an API for SQL injection is to save a potentially vulnerable request in Burp and then use SQLmap against it.
+- You can discover potential SQL weaknesses by fuzzing all potential inputs in a request and then reviewing the responses for anomalies.
+- Once you've saved the request, launch SQLmap with a command like the following:
+  `sqlmap -r /home/hapihacker/burprequest1 -p password`
+  - The -r option lets you specify the path to the saved request, the -p option lets you specify the exact parameters you'd like to test for SQL injection.
+  - If you do not specify a parameter, SQLmap will attack every parameter, one after another.
+  - This is great for performing a thorough test of a simple request, but can be time consuming if you have a request with many parameters.
+- SQLmap tests 1 parameter at a time and tells you whether the parameter is likely to be vulnerable or not.
+- To skip a parameter, use CTRL+C to pull up SQL map's scan options and use the n command to move to the next parameter.
+- When SQLmap indicates that a certain parameter may be injectable, attempt to exploit it. Here are two steps to do this:
+  1. Dump all database entries:
+     `sqlmap -r /path/to/burprequest1 -p vuln-param -dump-all`
+  - If you're not interested in dumping the entire database, you could use the --dump command to specify the exact table and columns you would like:
+    `sqlmap -r /path/to/burprequest1 -p <vuln-param> -dump -T users -C password -D helpdesk`
+  - When these commands execute successfully, SQL map will display the database information on the command line and export the info to a CSV file.
+  2. Use SQLmap to automatically attempt to upload a web shell and execute the shell to grant you with system access:
+     `sqlmap -r /path/to/burprequest1 -p <vuln-param> -os-shell`
+  - This command will attempt to leverage the SQL command access within the vulnerable parameter to upload an launch a shell.
+  - If successful you will get an interactive shell with the target operating system.
+    `sqlmap -r /path/to/burprequest1 -p <vuln-param> -os-pwn`
+  - os-pwn option will attempt to gain a shell using Meterpreter or VNC.
+
+### NoSQL Injection
+
+- APIs commonly use NoSQL databases due to how well they scale with the architecture designs common to APIs.
+  - You may find that you run across NoSQL more often than SQL databases.
+- NoSQL injection techniques aren't as well known as SQL injection.
+- NoSQL is an umbrella term that means the database does not use SQL.
+- These databases have unique structures, modes of querying, vulnerabilities, and exploits.
+- Common NoSQL metacharacters:
+  - `$gt`, `{"$gt":""}`, `{"$gt":-1}`, `$ne`, `{"$ne":""}`, `{"$ne":-1}`, `$nin`, `{"$nin":1}`, `{"$nin":[1]}`, `|| '1'=='1`, `//`, `||'a'//'a`, `'||'1'=='1';//`, `'/{}:`, `'"\;{}`, `'"\/$[].>`, `{"$where": "sleep(1000)"}`.
+  - `$gt` is a MongoDB NoSQL query operator that selects documents that are greater than the provided value.
+  - `$ne` is a query operator that selects documents where the value is not equal to the provided value.
+  - `$nin` the "not in" operator, is an operator used to select documents where the field value is not within the specified array.
+  - The other metacharacters listed above are used to cause verbose errors or other interesting behavior such as bypassing authentication or waiting 10 seconds.
+- ex. An incorrect password response with a 202 status code:
+
+```
+HTTP/1.1 202 Accepted
+X-Powered-By: Express
+Content-Type: application/json; charset=utf-8
+
+{"message":"sorry pal, invalid login"}
+```
+
+- ex. Sending the payload `'"\;{}` as the password parameter might cause the following 400 Bad Request response:
+
+```
+HTTP/1.1 400 Bad Request
+X-Powered-By: Express
+--snip--
+
+SyntaxError: Unexpected token ; in JSON at position 54<br> &nbsp;at JSON.parse (&lt;anonymous&gt;)<br> [...]
+```
+
+- This error message doesn't indicate anything about the database in use.
+- This error message does indicate that this request has an issue with handling certain types of user input, which could be an indication that it is potentially vulnerable to an injection attack.
+  - If you see an error message similar to this, you should be testing deeper.
+- Test it by using Burp or Postman and the list of of NoSQL payloads:
+
+```
+POST /login HTTP/1.1
+Host: 192.168.195.132:8000
+--snip--
+
+user=hapi%40hacker.com&pass=§Password1%21§
+```
+
+- If successful, you will receive an authentication token and have access to the user's account.
+
+### Operating System Command Injection
+
+- To conduct an operating system command injection, you'll need to inject a command separator and operating system commands.
+- Knowing the operating system that is running on the target is extremely helpful.
+  - Get the most out of nmap scans during recon in an attempt to glean this info.
+- Operating system command injection typically requires being able to leverage system commands that the applicatio has access to or escaping the application altogether.
+- Key places to target:
+  - URL query strings
+  - Request parameters
+  - Headers
+  - Any request that has thrown unique or verbose errors, focusing particularly on errors containing operating system information, found during fuzzing attempts.
+- Command Separators:
+  - `|`, `||`, `&`, `&&`, `'`, `''`, `;`, `'"`
+- If you don't know the target's underlying operating system, you can fuzz the target using two payloads:
+  1. Command separator.
+  2. Operating system command.
+
+_Operating System Commands_
+
+| Operating System | Command   | Description                             |
+| ---------------- | --------- | --------------------------------------- |
+| Windows          | ipconfig  | Shows the network configuration         |
+|                  | dir       | Prints the contents of a directory      |
+|                  | ver       | Prints the operating system and version |
+|                  | echo %CD% | Prints the current working directory    |
+|                  | whoami    | Prints the current user                 |
+| Unix             | ip a      | Shows the network configuration         |
+|                  | ls        | Prints the contents of a directory      |
+|                  | uname -a  | Prints the operating system and version |
+|                  | pwd       | Prints the current working directory    |
+|                  | whoami    | Prints the current user                 |
+
+- To perform this attack with Wfuzz, you can either manually provide a list of commands or supply them via a wordlist.
+  - Save all the command separators in a file like _commandsep.txt_ and the operating machine commands as something like _os-cmds.txt_
+    `wfuzz -z file,/path/to/commandsep.txt -z file,/path/to/os-cmds.txt http://<target>/path/to/endpoint/ex/query?=WFUZZWFUZ2Z`
+- To perform this using Burp, you could use a cluster bomb attack.
+
+- Things to shoot for when you have a successful OS command injection:
+  - retrieve SSH keys.
+  - read the /etc/shadow file.
+  - explore the OS for juicy info.
+  - Escalate to a reverse shell.
+  - This is where API hacking transitions into regular hacking.
