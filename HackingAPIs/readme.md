@@ -2747,3 +2747,215 @@ _Note: For testing purposes, you might want to generate your own JWTs. Use https
   - Once it's proxied over, inspect the intercepted request and send it to Repeater to check for mistakes.
 
 #### Fuzzing Wide for Improper Asset Management
+
+- Improper asset management vulnerabilities arise when an organization exposes APIs that are either retired, in a test environment, or still in development.
+  - These assets often have fewer protections than its supported production counterparts.
+  - Improper asset management might affect only a single endpoint or request, so it's often useful to fuzz wide to test if improper assets management exists for any request across an API.
+
+_Note: In order to fuzz wide for this problem, it helps to have a specification of the API or a collection file that will make the requests available in Postman. This section assumes you have an API collection available._
+
+**Things to look for**:
+
+- Outdated API documentation.
+  - If API documentation has not been updated along with the API endpoints, it could contain references to portions of the API that are no longer supported.
+- Changelogs
+  - Look for entries like: `resolved broken object level authorization vulnerability in v3`
+  - If you find something like this, look for the endpoint it references in v1 or v2.
+- GitHub repository
+  - Similar to changelogs, look for issues that have been fixed that seem juicy, then look for the outdated endpoint.
+
+**Fuzzing**:
+
+- When you're fuzzing an API endpoint, start with fuzzing the version number (v1, v2, v3, etc.)
+  - Try replacing the current versions with v1, v2, v3, v4, test, mobile, uat, dev, old, etc.
+  - Some API providers will allow access to administrative functionality by adding /internal/ to the path before or after the versioning.
+    `/api/v2/internal/users`
+    `/api/internal/v2/users`
+- Begin by developing a baseline for how the API responds to typical requests using the Collection Runner with the API's expected version path.
+  - How does the API respond to a successful request.
+  - How does the API respond to a bad request (or requests for resources that do not exist).
+- Set up the same rest for status codes of 200 we used earlier.
+  - If the API provider typically responds with status code 404 for nonexistent resources, a 200 response for those resources would likely indicate that the API is vulnerable.
+  - Make sure to insert this test at the collection level so that it will run on every request when you use the Collection Runner.
+  - Save and run your collection.
+  - Inspect the results for any requests that pass this test.
+  - Once you've reviewed the results, rinse and repeat with a new keyword.
+- If you discover an improper asset management vuln, your next step will be to test the non-production endpoint for additional weaknesses.
+- This is where your recon skills will be put to good use.
+- If you've found that the target's GitHub or a changelog states that the older version of the API was vulnerable to a BOLA attack, you can attempt such an attack on the vulnerable endpoint.
+
+### Testing Request Methods with Wfuzz
+
+- You can use fuzzing to determine all the HTTP request methods available for a given API request.
+- First, capture or craft the API request whose acceptable HTTP methods you would like to test.
+- ex.
+  ```
+  GET /api/v2/account HTTP/1.1
+  HOST: restfuldev.com
+  User-Agent: Mozilla/5.0
+  Accept: application/json
+  ```
+- Next, create your request with Wfuzz using `-X FUZZ` to specifically fuzz the HTTP method.
+- ex.
+  `wfuzz -z list,GET-HEAD-POST-PUT-PATCH-TRACE-OPTIONS-CONNECT- -X FUZZ http://testsite.com/api/v2/account`
+  - You should see a combination of 405 status codes (Method Not Allowed) which should all return the same response length (ex. 163 characters)
+  - Wfuzz will confirm request methods that are allowed with 200 response codes.
+  - If you receive a 405 status code that has a longer than usual response length, it could indicate that the request is allowed.
+  - Anything that deviates from the baseline response is worthy of investigation.
+- If you find an acceptable request method that is not detailed in the API documentation, you may have discovered functionality that was not intended for end users.
+  - Undocumented functionality is a good find and should be tested for additional vulnerabilities.
+
+### Fuzzing "Deeper" to Bypass Input Sanitization
+
+- When fuzzing deep, you'll want to be strategic about setting payload positions.
+  - ex. For an email field in a PUT request, an API provider may do a pretty decent job at requiring that the conents of the request body match the format of an email address.
+  - Anything sent as a value that isn't an email address might results in the same 400 Bad Request error.
+  - If you've thoroughly tested a field and it doesn't yield any interesting results, you may want to leave it out of additional tests or save it for more thorough testing in a separate attack.
+- To fuzz even deeper into a specific field, you could try to escape whatever restriction are in place.
+
+**Escaping**:
+
+- Escaping is tricking the server's input sanitization code into processing a payload it should normally restrict.
+- First, try sending something that takes the form of the restricted field, add a null byte, and then add another payload position for fuzzing payloads to be inserted:
+  - ex. email field
+    `"user": "a@b.com%00§test§`
+  - You can fuzz for multiple escape characters like pipe (|), quotes (''), spaces, etc.
+    `"user": "a@b.com§escape§§test§`
+  - Using Burp Suite's cluster bomb attack is well suited for this, but is slow unless you have the Pro version.
+
+### Fuzzing for Directory Traversal
+
+- Directory Traversal (Path Traversal), is a vulnerability that allows an attacker to direct the web application to move to a parent directory using some form of the expression `../` and then read arbitrary files.
+  - You could leverage a series of path traversal dots and slashes in place of the escape symbols described in the previous section.
+- These vulnerabilities have been around for many years and are often well defended, but they are still possible with the right payload.
+- If you're able to exit the API path, you may be able to access sensitive information such as application logic, usernames, passwords, and additional personally identifiable information (names, phone numbers, emails, addresses, etc).
+- Can use both wide and deep techniques.
+- Start wide an then drill in on specific request values.
+- Enrich your payloads with information collected from reconnaissance, endpoint analysis, and API responses containing errors or other information disclosures.
+
+## Chapter 10: Exploiting Authorization
+
+The book focuses on two authorization vulnerabilities: BOLA and BFLA.
+
+### Finding BOLAs
+
+- BOLA continues to be the most prominent API-related vulnerability and luckily, it can be one of the easiest to test for.
+- If you find that the APi lists resources following a certain pattern, you can test other instances using that pattern.
+- ex. You notice that after making a purchase, the app uses an API to provide you with a receipt at the following location: `/api/v1/receipt/135`.
+  - Knowing this, you could then check for other numbers by using 135 as the payload position in Burp Suite or Wfuzz and changing 135 to numbers between 0 and 200.
+- When you're on the hunt for BOLA vulnerabilities, remember that they aren't only found using GET requests.
+  - Attempt to use all possible methods to interact with resources you shouldn't be authorized to access.
+- Vulnerable resource IDs aren't limited to the URL path.
+  - Make sure to consider other possible locations to check for BOLA weaknesses, including the body of the request and headers.
+
+#### Locating Resource IDs
+
+- To perform thorough BOLA testing, you'll need to pay close attention to the information the API provider is using to retrieve resources, as it may not be so obvious.
+- Look for user ID names or numbers, resource ID names or numbers, organization ID names or numbers, emails, phone numbers, addresses, tokens, or encoded payloads used in requests to retrieve resources.
+
+_Note: predictable request values don't make an API vulnerable to BOLA; the API is considered vulnerable only when it provides an unauthorized user access to the requested resources._
+
+- Often, insecure APIs will make the mistake of validating that the user is authenticated but fail to check whether that user is authorized to access the requested resources.
+
+Table 10-1 Valid requests for Resources and the Equivalent BOLA test. All requests use the same UserA token.
+
+| Type                 | Valid request                                                                        | BOLA test                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Predictable ID       | GET /api/v1/account/2222<br>Token: UserA_token                                       | GET /api/v1/account/3333<br>Token: UserA_token<br>Token: UserA_token                                    |
+| ID combo             | GET /api/v1/UserA/data/2222<br>Token: UserA_token                                    | GET /api/v1/UserB/Data/3333<br>Token: UserA_token<br>Token: UserA_token                                 |
+| Integer as ID        | POST /api/v1/account/<br>Token: UserA_token<br>{"Account": 2222}                     | POST /api/v1/account/<br>Token: UserA_token<br>{"Account": \[3333]}                                     |
+| Email as user ID     | POST /api/v1/user/account<br>Token: UserA_token<br>{"email": "UserA@email.com"}      | POST /api/v1/user/account<br>Token: UserA_token<br>{"email": "UserB@email.com"}                         |
+| GROUP ID             | GET /api/v1/group/CompanyA<br>Token: UserA_token                                     | GET /api/v1/group/CompanyB<br>Token: UserA_token                                                        |
+| Group and user combo | POST /api/v1/group/CompanyA<br>Token: UserA_token<br>{"email": "userA@CompanyA.com"} | POST /api/v1/group/CompanyB<br>Token: UserA_token<br>{"email": "userB@CompanyB.com"}                    |
+| Nested Object        | POST /api/v1/user/checking<br>Token: UserA_token<br>{"Account": 2222}                | POST /api/v1/user/checking<br>Token: UserA_token<br>{"Account": {"Account": 3333}}                      |
+| Multiple Objects     | POST /api/v1/user/checking<br>Token: UserA_token<br>{"Account": 2222}                | POST /api/v1/user/checking<br>Token: UserA_token<br>{"Account": 2222, "Account": 3333, "Account": 5555} |
+| Predictable token    | POST /api/v1/user/account<br>Token: UserA_token<br>{"data": "DflK1df7jSdfa1acaa"}    | POST /api/v1/user/account<br>Token: UserA_token<br>{"data": "DflK1df7jSdfa2dfaa"}                       |
+
+- Sometimes just requesting the resource won't be enough; instead, you'll need to request the resource as it was meant to be requested, often by supplying both the resource ID and the user's ID.
+  - Due to the nature of how APIs are organized, a proper request for resources may require the _ID combo_ format shown in table 10-1.
+  - Similarly, you may need to know the group ID along with the resource ID, as in the _group and user combo_ format.
+- _Nested objects_ are a typical structure found in JSON data.
+  - These are additional objects created within an object.
+  - Since nested objects are a valid JSON format, the request will be processed if user input validation does not prevent it.
+  - Using a nested object, you could escape or bypass security measures applied to the outer /key/value pair by including a separate key/value pair within the nested object that may not have the same security controls applied to it.
+  - If the application processes these nested objects, they are an excellent vector for an authorization weakness.
+
+#### A-B Testing for BOLA
+
+- What we call A-B testing is the process of creating resources using one account and attempting to retrieve those resources as a different account.
+  - This is one of the best ways to identify how resources are identified and what requests are used to obtain them.
+
+**A-B Testing Process**:
+
+1. Create resources as UserA.
+
+- Now how the resources are identified and how the resources are requested.
+
+2. Swap out your UserA token for another user's token.
+
+- In many instances, if there is an account registration process, you will be able to create a second account (UserB).
+
+3. Using UserB's token, make the request for UserA's resources.
+
+- Focus on resources for private information.
+- Test for any resources that UserB should not have access to (Full name, email, phone number, Social Security number, bank info, legal info, transaction data, etc.).
+  _Note: the following 2 steps are a variation on A-B testing_:
+
+4. Create multiple accounts at each privilege level to which you have access.
+
+- Keep in mind that your goal is to test and validate security controls, not destroy someone's business.
+- When perfomring BFLA attacks, there is a chance you could successfully delete the resources of other users, so it helps to limit a dangerous attack like this to a test account you create.
+
+5. Using your accounts, create a resource with UserA's account and attempt to interact with it using UserB's.
+
+- Use all the methods at your disposal.
+
+#### Side-Channel BOLA
+
+- One of the authors favorite methods of obtaining sensitive information from an APi is through side-channel disclosure. Essentially, this is any information gleaned from unexpected sources, such as timing data.
+- Side-channel discoveries are another reason why it is important to use an API as it was intended and develop a baseline of normal responses.
+- You could use timing, response codes, and lengths to deter mine if resources exist.
+- ex. if an API responds to nonexistent resources with a 404 Not Found but has a different response for existing resources, such as 405 Unauthorized, you'll be able to perform a BOLA side-channel attack to discover existing resources such as usernames, account IDs, and phone numbers.
+- On their own, BOLA findings may seem minimal, but information from these attacks can prove to be valuable in other attacks.
+  - You could leverage information gathered through a side-channel disclosure to perform brute-force attacks to gain entry to valid accounts.
+  - You could use information found from one BOLA test to perform other BOLA tests, such as the ID combo BOLA test.
+
+### Finding BFLAs
+
+- Hunting for BFLAs involves searching for functionality to which you should not have access.
+- BFLAs might allow you to update object values, delete data, and perform actions as other users.
+- To test for it, try to alter or delete resources or gain access to functionality that belongs to another user or privilege level.
+
+**Note: If you successfully send a DELETE request, you'll no longer have access to the given resource. For that reason, avoid testing for DELETE while fuzzing, unless you're targeting a test environment. Start your BFLA testing on a small scale to avoid causing huge interruptions.**
+
+#### A-B-A Testing for BFLA
+
+- Similar to BOLA A-B testing, A-B-A testing is the process of creating and accessing resources with one account and then attempting to alter the resources with another account.
+  - You should validate any changes with the original account.
+
+**A-B-A Testing Process**:
+
+1. Create, read, update, or delete resources as UserA.
+
+- Note how the resources are identified and how the resources are requested.
+
+2. Swap out your UserA token for UserB's.
+
+- In instances where there is an account registration process, create a second test account.
+
+3. Send GET, PUT, POST, and DELETE request for UserA's resources using UserB's token.
+
+- If possible, alter resources by updating the properties of an object.
+
+4. Check UserA's resources to validate changes have been made by using UserB's token.
+
+- Either by using the corresponding web application or by making API requests using UserA's token, check the relevant resources.
+- If, for example, the BFLA attack was an attempt to delete UserA's profile picture, load UserA's profile to see if the picture is missing.
+
+- In addition to testing authorization weaknesses at a single privilege level, ensure that you check for weaknesses at other privilege levels.
+- APIs could have all sorts of different privilege levels, such as basic user, merchant, partner, and admin.
+- If you have access to accounts at the various privilege levels, your A-B-A testing can take on a new layer.
+- Try making UserA an administrator and UserB a basic user.
+- If you're able to exploit BLFA in that situation, it will have become a privilege escalation attack.
+
+#### Testing BFLA in Postman
