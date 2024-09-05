@@ -14,6 +14,7 @@ InQL Scanner
 IP Rotate
 Bypass WAF
 Postman
+IP Rotate - Rhino Security Labs
 
 Other Useful tools:
 DNS Dumpster
@@ -22,3 +23,10 @@ Pastehunter
 TruffleHog
 jwt_tool https://github.com/ticarpi/jwt_tool
 SQLmap
+
+WAF Detection/handling:
+W3af
+Wafw00f
+Bypass WAF
+nmap -script http-waf-detect
+
