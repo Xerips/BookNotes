@@ -3511,3 +3511,333 @@ _Operating System Commands_
   - explore the OS for juicy info.
   - Escalate to a reverse shell.
   - This is where API hacking transitions into regular hacking.
+
+## Chapter 13: Applying Evasive Techniques and Rate Limit Testing
+
+- When testing almost any API, you'll encounter security controls that hinder your progress.
+- These could be:
+  - A WAF that scans your requests for common attacks.
+  - Input validation that restricts the type of input you send.
+  - Rate limiting tha restricts how many requests you can make.
+- Because REST APIs are stateless, API providers find way to effectively attribute the origin of requests, and they'll use some detail about that attribution to block your attacks.
+  - If you can discover those details, you can often trick the API.
+
+### Evading API Security Controls
+
+- WAFs are the most common security control in place to protect APIs.
+- They are essentially software that inspects API requests for malicious activity.
+- They measure all traffic against a certain threshold and then take action if they find anything abnormal.
+- If you notice that a WAF is present, you can take preventative measures to avoid being blocked from interacting with your target.
+
+#### How Security Controls Work
+
+- Security controls may differ from one API provider to the next, but at a high level, they will have some threshold for malicious activity that will trigger a response.
+- WAFs can be triggered by a wide variety of things:
+  - Too many requests for a resource that does not exist.
+  - Too many requests within a small amount of time.
+  - Common attack attempts such as SQL injection and XSS attacks.
+  - Abnormal behavior such as tests for authorization vulnerabilities.
+- ex. A WAF's threshold for each of these categories is three requests. On the fourth malicious-seeming request, the WAF will have some sort of response, whether this means sending you a warning, altering API defenders, monitoring your activity with more scrutiny, or simply blocking you.
+- To block you, these controls (WAFs for example), must have some way of determining who you are. The process of identifying you is called attribution.
+- Because RESTful APIs are stateless, any information used to identify you must be contained within the request.
+  - IP address
+  - Origin headers
+  - Authorization Tokens
+  - Metadata
+    - Metadata is information extrapolated by the API defenders, such as patterns of requests, the rate of requests, and the combination of the headers included in requests.
+- More advanced products can block you based on pattern recognition and anomalous behavior.
+- If 99% of an API's user base performs requests in a certain way, the API provider could use a technology that develops a baseline of expected behavior and then blocks any unusual requests.
+  - Some API providers aren't comfortable using these tools, as they risk blocking a potential customer who deviates from the norm.
+  - There is a tug of war between convenience (availability) and security.
+
+_Note: In a white box or gray box test, it may make more sense to request direct access to the API from your client so that you're testing the API itself rather than the supporting security controls. For example, you could be provided accounts for different roles. Many evasive techniques in this chapter are most useful in black box testing._
+
+#### API Security Control Detection
+
+- The easiest way to detect API security controls is to attack the API with guns blazing.
+  - If you throw the kitchen sink at it by scanning, fuzzing, and sending malicious requests, you will quickly find out whether security controls will hinder your testing.
+  - The draw back to this approach is that you may only learn that, yes there are security controls, and yes you have been blocked from making further requests.
+- To avoid this right out of the gate, first use the API as it was originally intended.
+  - This way you have a chance to understand the APIs functionality before getting into trouble.
+  - Review documentation, build out a collection of valid requests, and then map out the API as a valid users.
+  - While doing this, review the API responses for evidence of a WAF.
+    - WAFs often include headers with their responses.
+- Pay attention to headers such as `X-CDN` in the request or response.
+  - This means the API is leveraging a _content delivery network (CDN)_.
+  - CDNs provide a way to reduce latency globally by caching the API provider's requests.
+  - CDNs will often provide WAFs as a service.
+  - APIs that proxy their traffic through CDNs will often include headers such as:
+    - `X-CDN: Impreva`
+    - `X-CDN: Served-By-Zenedge`
+    - `X-CDN: fastly`
+    - `X-CDN: akamai`
+    - `X-CDN: Incapsula`
+    - `X-Kong-Proxy-Latency: 123`
+    - `Server: Zenedge`
+    - `Server: Kestrel`
+    - `X-Zen-Fury`
+    - `X-Original-URI`
+- Another method for detecting WAFs, and especially those provided by a CDN, is to use Burp Suite's Proxy and Repeater to watch for your requests being sent to a proxy.
+  - A 302 response that forwards you to a CDN would be an indication of this.
+- In addition to manually analyzing responses, you could use a tool such as W3af, Wafw00f, or Bypass WAF to proactively detect WAFs.
+- Nmap script for detecting WAFs:
+  `nmap -p 80 -script http-waf-detect http://<target>`
+- Once you've discovered how to bypass a WAF or other security control, it will help to automate your evasion method to send larger payload sets (more info at the end of the chapter).
+
+#### Using Burner Accounts
+
+- Once you've detected the presence of a WAF, it's time to discover how it responds to attacks.
+- You will need to develop a baseline for the API security controls in place, similar to the baselines you established while fuzzing in Chapter 9.
+  - It's best to use burner accounts for this testing.
+- _Burner Accounts_ are accounts or tokens you can dispose of should an API defense mechanism ban you.
+- These accounts make testing safer.
+- Create a bunch of accounts before starting attacks and create a short list of authorization tokens you can use during testing.
+- When creating these accounts, make sure to use information that is not associated with the other accounts.
+  - A smart API defender or defense system could collect the data you provide and associate it with the tokens you create.
+  - Use:
+    - Different names
+    - Different email addresses
+    - For next level separation, use a VPN or proxy to change your IP address while registering for different accounts.
+- Ideally, you won't burn any of these accounts if you can evade detection in the first place.
+
+#### Evasive Techniques
+
+- Evading security control sis a process of trial and error.
+- Some security controls are more secretive than others and don't advertise themselves in response headers.
+- Burner accounts will help you identify actions that will trigger a response, you can then attempt to avoid those actions or bypass detection with your next account.
+
+**String Terminators**
+
+- Null bytes and other combinations of symbols often act as _string terminators_, or metacharacters used to end a string.
+- If these symbols are not filtered out, they could terminate the API security control filters that may be in place.
+- When you're able to successfully send a null byte, it is interpreted by many backend programming languages as a signifier to stop processing.
+- If the null byte is processed by a backend program that validates user input, that validation program could be bypassed because it stops processing the input.
+- String terminators:
+  `%00`
+  `0x00`
+  `//`
+  `;`
+  `%`
+  `!`
+  `?`
+  `[]`
+  `%5B%5D`
+  `%09`
+  `%0a`
+  `%0b`
+  `%0c`
+  `%0e`
+- String terminators can be placed in different parts of the request to attempt to bypass any restrictions in place.
+- ex. using a string terminator in an XSS payload:
+
+```
+POST /api/v1/user/profile/update
+--snip--
+
+{
+"uname": "<s%00cript>alert(1);</s%00cript>"
+"email": "hapi@hacker.com"
+}
+```
+
+- Wordlists:
+  - SecLists metacharacters list (Fuzzing directory)
+  - Wfuzz bad characters list (Injections directory)
+  - Beware of getting banned by using these lists in a well defended environment.
+  - In a sensitive environment try testing out metacharacters slowly across different burner accounts.
+    - Instead of burning one after another, spread out attacks between multiple burners to try and stay under any malicious request count implemented by the defence mechanisms.
+
+**Case Switching**
+
+- This is a long shot, but if the security controls are very dumb, you may be able to sneak payloads past them just by switching the case of the payload.
+  `<sCriPt>alert('supervuln')</scrIpT>`
+  - If you try this, try to also avoid a pattern in the case switching.
+
+**Encoding Payloads**
+
+- Encoded payloads can often trick WAFs while still being processed by the target application or database.
+- If a WAF or input validation rule blocks certain characters or strings, it might miss encoded version of those characters and strings.
+- Burp Suites Decoder module is perfect for quickly encoding and decoding payloads.
+- URL encoding has the best chance of being interpreted by the target app, but HTML or base64 could often work as well.
+- When encoding focus on characters that are often blocked:
+  - < > ( ) [ ] { } : ' / \ |
+- Try encoding parts of the payload as well as the whole payload.
+- Try double encoding the payload.
+  - This works if the input validations performs a single decoding process and then the backend services of the application perform a second round of decoding.
+
+**Automating Evasion with Burp Suite**
+
+- Once you've discovered a successful method o bypassing a WAF, it's time to leverage the functionality built into your fuzzing tools to automate your evasive attacks.
+- In Burps Intruder Payloads window there is an option called Payload Processing that allows you to add rules that Burp will apply to each payload before it is sent.
+  - This feature allows you to add rules to the payload such as a prefix, a suffix, encoding, hashing, and custom input, as well ass a match and replace for various characters.
+- ex. If you discover that you can bypass a WAF by adding a null byte before and after a URL-encoded payload, you could either edit the wordlist to match these requirements or add processing rules.
+  - Burp Suite applies the payload-processing rules from top to bottom, so if we don't want the null bytes to be encoded, we'll need to first encode the payload and then add the null bytes.
+  - The first rule will be to URL-encode all characters in the payload.
+    - Select the Encode rule type, select the URL-Encode All Characters option, then click OK to add the rule.
+  - The second rule will be to add the null byte before the payload.
+    - Select the Add Prefix rule and setting the prefix to %00.
+  - The last rule will be to add the null byte after the payload.
+    - Select the Add Suffix rule and set the suffix to %00.
+  - To test the payload processing, launch an attack and review the request payloads.
+  - Check the Payload column of your attack to make sure the payloads have been processed properly.
+
+**Automating Evasion with Wfuzz**
+
+- Wfuzz has some great capabilities for payload processing.
+  - Find the payload-processing documentation under the Advanced Usage section at https://wfuzz.readthedocs.io
+- If you want to encode a payload, you'll need to know the name of the encoder you want to use. You can view them with `wfuzz -e encoders`.
+- To use an encoder, add a comma to the payload and specify its name:
+  `wfuzz -z file,wordlist/api/common.txt,base64 http://<target>/FUZZ`
+  - The above will base64-encode every payload before sending the request.
+- You can also use multiple encoders.
+  - To have a payload processed by multiple encoders in separate requests, specify them with a hyphen:
+    `wfuzz -z file,/path/to/common.txt,base64-md5-none https://<target>/FUZZ`
+- If you want each payload to be processed by multiple encoders, separate the encoders with an @ sign:
+  `wfuzz -z list,aaaaa-bbbbb-ccccc,base64@random_upper -u https://<target>/FUZZ`
+  - This operates on the payloads in reverse order.
+- Dive deeper into the topic of WAF bypassing by checking out [Awesome-WAF GitHub repo](https://github.com/0xInfection/Awesome-WAF).
+
+### Testing Rate Limits
+
+- To identify a rate limit, consult the API documentation and marketing materials for any relevant information.
+- Rate limiting details are often public due to being a common avenue of monetization (pay more get more, etc).
+- You can also check the API headers to let you know how many more requests you can make before you hit the limit:
+  `x-rate-limit:`
+  `x-rate-limit-remaining:`
+- Sometimes you will have to hit the rate limit to know where it is, this will often result in a temporary block or ban.
+  - You may receive new response codes like 429 Too Many Requests.
+    - These may include a header like `Retry-After:` that indicates when you can submit more requests.
+- Rate limiting only works if the API is provider is able to attribute requests to a single user (with IP address, request data, metadata, auth tokens, etc.).
+- In API requests the authorization token is a primary means of identity, so if too many requests are sent from a token, it could be put on a naughty list and temporarily or permanently banned.
+- You can test rate limiting in two ways:
+  - Avoid being rate limited altogether.
+  - Bypass the mechanism that is blocking you once you are rate limited.
+
+**A note on Lax Rate Limits**
+
+- Some rate limits may be so lax that you don't need to bypass them to conduct an attack.
+- ex. If a rate limit is set to 15,000 requests per minute and you want to brute-force a password with a 150,000 wordlist, you could easily stay within the rate limit by taking 10 minutes to cycle through every wordlist entry.
+- With Wfuzz, you can set a time delay between requests with the -s flag.
+
+| Delay between requests<br>(seconds) | Approximate number of request sent |
+| ----------------------------------- | ---------------------------------- |
+| 0.01                                | 10 per second                      |
+| 1                                   | 1 per second                       |
+| 6                                   | 10 per minute                      |
+| 60                                  | 1 per minute                       |
+
+- Burps CE Intruder is throttle by design, so it's actually helpful in staying within a certain low rate limit restriction.
+- If you're using Burp Pro, you can set up Intruder's Resource Pool to limit the rate at which requests are sent.
+  - Burpsuite calculates in milliseconds:
+
+| Delay Between requests<br>(milliseconds) | Approximate requests |
+| ---------------------------------------- | -------------------- |
+| 100                                      | 10 per second        |
+| 1000                                     | 1 per minute         |
+| 6000                                     | 10 per minute        |
+| 60000                                    | 1 per minute         |
+
+- If you manage to attack an API without exceeding its rate limits, your attack can server as a demonstration of the rate limiting's weakness.
+- Determine whether consumers face any consequences for exceeding a rate limit.
+  - If rate limiting has been misconfigured, there is a chance exceeding the limit causes no consequences.
+  - If this is the case, you've identified a vulnerability.
+
+#### Path Bypass
+
+- One of the simplest ways to get around a rate limit is to slightly alter the URL path.
+  - Use case switching or string terminators in your requests.
+- ex. POST request:
+
+```
+POST /api/myprofile
+--snip--
+{uid=§0001§}
+```
+
+- Based on the uid length, you'll need to send 10,000 requests to fully brute-force it.
+- If you have 100 requests per minute of rate limit space, you could send the requests over an hour and 40 minutes, or else attempt a bypass.
+- You could also attempt to bypass the rate limit by altering the URL path with string terminators or various upper- and lowercase letters:
+  - `POST /api/myprofile%00`
+  - `POST /api/myprofile%20`
+  - `POST /api/myProfile`
+  - `POST /api/MyProfile`
+  - `POST /api/my-profile`
+- Each of these has a chance to bypass the rate limit.
+- You could also append meaningless parameters to the path to see if they work and bypass the rate limit:
+  - `POST /api/myprofile?test=1`
+  - If this works, simply add a new payload position for the meaningless parameter and use a list of numbers of the same lenght as the number of request you would like to send:
+  ```
+  POST /api/myprofile?test=§1§
+  --snip--
+  {uid=§0001§}
+  ```
+  - If you're using Burp Intruder for this attack, you could set the attack type to pitchfork and use the same value for both payload positions, generating the smallest number of requests required to brute-force the uid.
+
+#### Origin Header Spoofing
+
+- Some APIs Providers use headers to enforce rate limiting.
+- These _origin_ request headers tell the web server where a request came from.
+- If the client generates origin headers, we could manipulate them to evade rate limiting.
+- Try including common origin headers in your requests:
+  - `X-Forwarded-For`
+  - `X-Forwarded-Host`
+  - `X-Host`
+  - `X-Originating-IP`
+  - `X-Remote-IP`
+  - `X-Client-IP`
+  - `X-remote-Addr`
+  - For values to use with these headers try:
+  - Private IP addresses
+  - Localhost IP address (127.0.0.1)
+  - An IP address relevant to the target
+    - If you've found IPs related to your target in recon, try them as values here.
+- Try sending every possible origin header at once or including them in individual requests.
+  - If you send every header at once, you may get a 431 Request Header Field Too Large status code.
+  - Just send 1 fewer until it works.
+- API defenders may also include the `User-Agent` header to attribute requests to a user.
+  - `User-Agent` headers are meant to identify the client browser, browser versioning information, and client operating system.
+  ```
+  GET / HTTP/1.1
+  Host: example.com
+  User-Agent: Mozilla/5.0 (X11; Linux x86)64; rv:78.0) Gecji.20100101 Firefox/78.0
+  ```
+- Seclists includes "User-Agent" wordlists you can use to cycle through different values in your requests (seclists/Fuzzing/User-Agents).
+
+#### Rotating IP Addresses in Burp Suite
+
+- IP-based restrictions from a WAF can stop fuzzing dead in its tracks.
+
+**IP Rotate**
+
+- Rhino Security Labs released a Burp Suite extension and guide for performing an awesome evasion technique called IP Rotate.
+- It is also available to Burp Suite CE.
+- To use it, you'll need an AWS account in which you can create an IAM user.
+- This tool allows you to proxy your traffic through the AWS API gateway, which will then cycle through IP addresses so that each request comes from a unique address.
+  - This is next-level evasion, because you're not spoofing and information; instead, your requests are actually originating from different IP addresses across AWS zones.
+  - There is a small cost to using the AWS API gateway.
+
+**Installation**
+
+- To install the extension, you'll need a tool called Boto3 as well as the Jython implementation of the Python programming language.
+- To install Boto3 use the following pip3 command: `pip3 install boto3`
+- Next, download the Jython standalone file from https://www.jython.org/download.html.
+- Once you've downloaded the file, go to the Burpsuite extender options and specify the Jython standalone file under Python Environment.
+- Navigate to the Burp Suite Extender's BApp Store and search for IP Rotate. You should now be able to click the Install button.
+- Login to your AWS management account, and navigate to the IAM service page.
+- After loading the IAM Services page, click Add Users and create a user account with programmatic access selected, then proceed to the next page.
+- On the Set Permissions page, select Attach Existing Policies Directly.
+- Filter policies by searching for "API."
+- Select the AmazonAPIGateway Administrator and AmazonAPIGatewayInvokeFullAccess permissions.
+- Proceed to the review page.
+- No tags are necessary, so you can skip ahead and create the user.
+- Now you can download the CSV file containing your user's access key and secret access key.
+- Once you have the two keys, open Burp Suite and Navigate to the IP rotate module.
+- Copy and paste your access key and secret key into the relevant fields.
+- Click the Save Keys button.
+- When you're ready to use IP Rotate, update the target host field to your target API and click Enable.
+  - You do not need to enter in the protocol (HTTP or HTTPS) in the target host field.
+  - Use the Target Protocol button to specify either HTTP or HTTPS.
+- To test it, specify ipchicken.com as your target. While proxying a request to ipchicken.com and see your rotating IP displayed with every refreshed request.
+- You can now bypass all IP-based security controls.
+
+## Chapter 14: Attacking GraphQL
