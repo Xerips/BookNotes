@@ -15,6 +15,7 @@ IP Rotate
 Bypass WAF
 Postman
 IP Rotate - Rhino Security Labs
+InQL - Super handy for mapping GraphQL requests/queries.
 
 Other Useful tools:
 DNS Dumpster

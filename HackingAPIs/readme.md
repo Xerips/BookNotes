@@ -3841,3 +3841,428 @@ POST /api/myprofile
 - You can now bypass all IP-based security controls.
 
 ## Chapter 14: Attacking GraphQL
+
+"This chapter will guide you through the process of attacking the Damn Vulnerable GraphQL Application (DVGA) using the API hacking techniques we've covered so far. We'll begin with active reconnaissance, transition to API analysis, and conclude by attempting various attacks against the application."
+
+- There are some major differences between the RESTful APIs and GraphQL.
+
+### GraphQL Requests and IDEs
+
+- GraphQL more closely resembles SQL than REST APIs.
+- Because GraphQL is a query language, using it is really just querying a database with more steps.
+- ex: GraphQL request.
+
+```
+POST /v1/graphql
+--snip--
+query products (price: "10.00") {
+    name
+price
+}
+```
+
+- ex: GraphQl response.
+
+```
+200 ok
+{
+"data": {
+"products": [
+{
+"products_name": "Seat",
+"price": "10.00",
+"products_name": "Wheel",
+"price": "10.00"
+}]}}
+```
+
+- Unlike REST APIs, GraphQL APIs don't use a variety of endpoints to represent where resources are located.
+  - All requests use POST and get sent to a single endpoint.
+  - The request body will contain the query and mutation, along with the requested types.
+- The GraphQL _schema_ is the shape in which the data is organized.
+  - The schema consists of types and fields.
+  - Types (query, mutation, subscription) are the basic methods consumers can use to interact with GraphQL.
+- REST APIs use the HTTP request methods GET, POST, PUT, DELETE, to implement CRUD (Create, Read, Update, Delete) functionality.
+- GraphQL uses query (read) and mutation (create, update, delete).
+  - Subscription is essentially a connection made to the GraphQL server that allows the consumer to receive real-time updates.
+  - We won't be using this.
+- You can build a request in GraphQL to perform both a query and a mutation, allowing you to read and write in a single request.
+- _Queries_ begin with an object type.
+  - In the above example the object type is _products_.
+  - Object types contain one or more fields providing data about the object - such as name and price in our example.
+  - Queries can also contain arguments within parentheses - these help narrow down the fields you're looking for.
+    - The argument in the example request is `(price: "10.00")` and indicates that the consumer only wants products that have a price of "10.00".
+- Many GraphQL APIs will respond to all requests with an HTTP 200 response, regardless of whether the query was successful.
+  - The error message for unsuccessful requests, depending on how the API is set up, will be in the body of the 200 OK response.
+- In REST APIs, you will get an error response code when a request is not successful.
+- GraphQL providers commonly make an integrated development environment (IDE) available over their web application.
+- A GraphQL IDE is a graphical interface that can be used to interact with the API.
+- GraphQL IDEs:
+  - GraphiQL
+  - GraphQL Playground
+  - Altair Client
+- These IDEs consist of a window to craft queries, a window to submit requests, a window for responses, and a way to reference the GraphQl documentation.
+
+### Active Reconnaissance
+
+#### Scanning
+
+- Start with Nmap:
+  `sudo nmap -sC -sV <target>`
+- You can follow up with additional Nmap scans like an all port scan, stealth scan, etc. depending on the results.
+
+- Perform a web application vuln scan using Nikto specifying any ports you suspect of running GraphQL:
+  `nikto -h <target>:<port>`
+
+- Nikto can tell you things like whether the application has some security misconfigurations.
+  - Missing `X-Frame-Options`
+  - Undefined `X-XSS-Protection` headers
+  - What request methods are allowed
+  - Etc.
+
+#### View the Application in a Browser
+
+- Use the site how any other user would by clicking the links located on the web pages.
+- Explore the Private Pastes and Public Pastes
+  - Create Paste
+  - Import Paste
+  - Upload Paste Links.
+- Look for:
+  - usernames
+  - forum posts that include IP addresses and `user-agent` info
+  - links for uploading files
+  - links for creating forum posts
+  - registration links
+  - password resets
+  - etc.
+
+#### Using DevTools
+
+- Navigate to the home page and open the Network module in DevTools
+  - Refresh the Network module by pressing CTRL+R
+  - Look through the response headers of the primary source.
+  - Look for responses that indicate whether the app is using GraphQL.
+  - ex. `Set-Cookie: env=graphiql:disable`
+- In your browser navigate to any other interesting pages like "Public Pastes" and open the Network module again.
+  - If you find any source files that are called anything resembling `graphql`, select the source file and hit the Preview tab.
+- GraphQL like REST uses JSON as the syntax for transferring data.
+
+### Reverse Engineering the GraphQL API
+
+- Once you know the target app uses GraphQL, try to determine the API's endpoint and requests.
+  - Remember, GraphQL has one endpoint to rule them all, unlike REST APIs that use multiple endpoints for different resources.
+- Find the GraphQL endpoint and figure out what you can query for.
+
+#### Directory Brute-Forcing for the GraphQL Endpoint
+
+- You can scan the application using Gobuster or Kiterunner to brute-force where any GraphQL-related directories are.
+- You could try doing this manually with some typical request paths:
+  - `/graphql`
+  - `/v1/graphql`
+  - `/api/graphql`
+  - `/v1/api/graphql`
+  - `/graph`
+  - `/v1/graph`
+  - `/graphiql`
+  - `/v1/graph`
+  - `/graphiql`
+  - `/console`
+  - `/query`
+  - `/graphql/console`
+  - `/altair`
+  - `/playground`
+- Remember to replace the version numbers in any of these paths with:
+  - `v2`
+  - `v3`
+  - `v4`
+  - `/test`
+  - `/internal`
+  - `/mobile`
+  - `/legacy`
+  - etc.
+- ex. Brute-Forcing with kiterunner using seclists graphql.txt
+  `kr brute http://<target>:<port> -w /path/to/seclists/Discover/Web-Content/graphql.txt`
+  - Once you've found some potential GraphQL endpoints, visit them in your browser.
+- If you've found a GraphiQL web IDE endpoints, the API documentation is normally located on the top right of the page.
+  - If this is the case, you can click the Docs button and you should see the Documentation Explorer window.
+  - If you're not authorized, you will need to find a way to get authorized to view the documentation or make requests.
+
+#### Cookie Tampering to Enable the GraphiQL IDE
+
+- Capture a request to to the `/graphiql` endpoint (or whatever endpoint you've found), using Burp to see what you're working with.
+- ex. DVGA request to `/graphiql`
+
+```
+GET /graphiql HTTP/1.1
+Host: <Host IP/Domain>:<port>
+--snip--
+Cookie: language=en; welcomebanner_status=dismiss; continueCode=KQabVVENkBvjq9O2xgyoWrXb45wGnmTxdaL8m1pzY1PQKJMZ6D37neRqyn3x; cookieconsent_status=dismiss; session=eyJkaWZmaWN1bHR5IjoiZWFzeSj9.YWOfOA.NYaXtJpmkjyt-RazPrLj5GKg-Os; env=z3JhcGhpcWw6ZglzYWJsZQ==
+Upgrade-Insecure-Requests: 1
+Cache-Control: max-age=0.
+```
+
+- You should notice that the `env=` variable is base64 encoded. You can guess this by the == at the end of the string
+  - If you decode it using Burp Decoder or any other decoder, you'll see it is `graphiql:disable`, which is the same value we saw in the `Set-Cookie:` field of our inspection of the website with DevTools.
+- The obvious next step is to change the value to enable, re-encode it to base64, then resend the request with repeater to check the response.
+- To use the GraphiQL IDE go back to the Network tab in DevTools on the GraphiQL endpoint and update the cookie to the newly encoded one.
+- The page should now load without errors and you can check out the Documentation Explorer.
+
+#### Reverse Engineering the GraphQL Requests
+
+- At this point, we know the endpoints we want to target, but we don't know the structure of the API's requests.
+- Start by intercepting requests in Postman to better manipulate them.
+  - Set your browser proxy settings to Postman, then make sure capture requests is turned on in Postman.
+  - Set Save Requests to `Collection: DVGA GraphQL` or whatever collection name makes sense for your project.
+  - You can now capture requests by manually navigating the web site.
+- Once you've thoroughly used the web app, go back to Postman and check out the collection you've been saving requests to.
+  - Delete any that don't include the endpoints you're mapping out (ex. `/graphiql`, or `/graphql`).
+- Because GraphQL requests function solely using the data in the body of the POST request, rather than the request's endpoint, you'll have to review the body of the request to get an idea of what the requests are doing.
+- Go through each request and rename them so you can better refer to what they do.
+- Some of the request bodies may seem intimidating; if so, extract a few key details from them and give them a temporary name until you understand them better.
+  - ex. request:
+  ```
+  POST http://192.168.195.132:5000/graphiql?
+  {"query":"\n  query IntrospectionQuery {\n  __schema {\n    queryType{ name }\n mutationType { name }\n     SubscriptionType { name }\n
+  --snip--
+  ```
+  - This is hard to read, but we can pick out a few details:
+  - The request is to GraphiQL (`/graphiql?`)
+  - The query is `IntrospectionQuery`
+  - The queryType is `mutationType` and `SubscriptionType`
+  - So we could name it something like "GraphiQL IntrospectionQuery - mutationType SubscriptionType" until we know more.
+  - Continue to go through the requests, and as you see differences between requests make sure to capture them in your re-naming.
+
+#### Reverse Engineering a GraphQL Collection Using Introspection
+
+- Introspection is a feature of GraphQL that reveals the API's entire schema to the consumer, making it a gold mine when it comes to information disclosure.
+- For this reason, you'll often find Introspection disabled and wil have to work a lot harder to attack the API.
+- If you can query the schema, you'll be able to operate as though you've found a collection or specification file for a REST API.
+- Testing for Introspection is as easy as sending an introspection query.
+- Since we set the cookie to enable us to access the DVGA GraphiQL interface, we can capture the introspection query by intercepting the requests made when loading `/graphiql`, becuase the GraphiQL interface sends an introspection query when populating the Documentation Explorer.
+- The full introspection query is quit large. You can check it out by intercepting the request yourself or check it out on Hacking APIs Github repo at https://github.com/hAPI-hacker/Hacking-APIs.
+- ex. Partial introspection query:
+
+```
+query IntrospectionQuery {
+  __schema {
+    queryType { name }
+    mutationType { name }
+    subscriptionType { name }
+    types {
+      ...FullType
+    }
+    directives {
+      name
+      description
+      locations
+      args {
+        ...InputValue
+      }
+    }
+  }
+}
+```
+
+- A successful GraphQL introspection query will provide you with all the types and fields contained within the schema.
+- You can use the schema to build a Postman Collection.
+- If you're using GraphiQL, the query will populate the GraphiQL Documentation Explorer.
+  - The GraphiQL Documentation Explorer is a tool for seeing the types, fields, and arguments available in the GraphQL documentation.
+
+### GraphQL API Analysis
+
+#### Crafting Requests Using the GraphiQL Documentation Explorer
+
+- Take one of the requests we reverse engineered from Postman, such as the request for Public Pastes used to generate the _public_pastes_ web page, and test it out using the GraphiQL IDE.
+- Use the Documentation Explorer to help you build your query.
+- Under Root Types, select Query.
+- Using the GraphiQL query panel, enter `query` followed by curly brackets to initiate the GraphQL request.
+- Not query for the public pastes field by adding `pastes` under `query` and using parentheses for the argument `public: true`.
+- Since we'll want to know more about the public pastes object, we'll need to add fields to the query.
+- Each field we add to the request will tell us more about the object.
+- To do this, select PasteObject in the Documentation Explorer to view these fields.
+- Finally, add the fields that you would like to include in your request body, separated by new lines.
+- The fields you include represent the different data objects you should receive back from the provider.
+- You could add `title`, `content`, `public`, `ipAddr`, and `pId`, or feel free to experiment with your own fields.
+  - ex.
+  ```
+  query {
+  pastes (public: true) {
+    title
+      content
+      public
+      ipAddr
+      pId
+    }
+  }
+  ```
+  - Send the request by using the Execute Query button or the shortcut CTRL+Enter.
+  - If you've followed along with the DVGA so far, it should return:
+
+```
+  {
+    "data": {
+      "pastes": [
+        {
+          "id": "UGFzdGVPYmp1Y3Q6MTY4"
+          "content": "testy",
+          "ipAddr": "192.168.195.133",
+          "pId": "166"
+        },
+        {
+          "id": "UGFzdGVPYmp1Y3Q6MTY3",
+          "content": "McTester",
+          "ipAddr": "192.168.195.133",
+          "pID": "165"
+        }
+      }
+    }
+```
+
+#### Using the InQL Burp Extension
+
+- If you can't find a GraphiQL IDE to work with on your target, the Burp extension InQL can help.
+- InQL acts as an interface to GraphQL within Burp Suite.
+
+**Installation**
+
+- You'll need Jython installed and to select Jython in the Extender options (Chapter 13 for the Jython installation steps).
+- Install InQL from the BApps Store.
+- Once installed, select the InQL Scanner and add the URL of the GraphQL API you're testing.
+
+- The scanner will automatically find various queries and mutations and save them to a file structure.
+- You can then select these saved requests and send them to Repeater for additional testing.
+
+- If you're still following along with DVGA, you'll see `paste.query` query that is used to find pastes by their paste ID (pID).
+- If you posted any public pastes in the web application, you can see your pID values. What if we used an authorization attack against the pID field by requesting pIDs that were meant to be private?
+
+  - This would constitute a BOLA attack.
+  - Since the paste IDs seem to be sequential, we'll want to test for any authorization restrictions preventing us from accessing the private posts of other users.
+  - Right click `paste.query` and send it to Repeater.
+  - Edit the `code*` value by replacing it with a pID that should work.
+  - ex. pID 166
+  - Send the request with repeater and you should receive:
+
+  ```
+  HTTP/1.0 200 OK
+  Content-Type: application/json
+  Content-Length: 319
+  Vary: Cookie
+  Server: Werkzeug/1.0.1 Python/3.7.10
+
+  {
+    "data": {
+      "paste": {
+        "owner": {
+          "id": "T3duZXJPYmp1Y3Q6MQ=="
+        },
+        "burn": false,
+        "Owner": {
+          "id": "T3duZXJPYmp1Y3Q6MQ=="
+        },
+        "userAgent": "Mozilla/5.0 (X11, Linux x86_64; rv:78.0) Firefox/78.0",
+        "pId": "166",
+        "title": "test3",
+        "ownerId": 1,
+        "content": "testy",
+        "ipAddr": "192.168.195.133",
+        "public": true,
+        "id": "UGFzdGVPYmp1Y3Q6MTY2"
+      }
+    }
+  }
+  ```
+
+  - This is a public paste the author previously submitted, if you haven't submitted anything, this may not work.
+
+- If we're able to request pastes by pID, maybe we can brute-force the other pIDs to see if there are authorization requirements that prevent us from requesting private pastes.
+- Send the previous request to Intruder and then set the pID value to be the payload position.
+- Change the payload to a number value starting at 0 and going to 166, then start the attack.
+- You should have successfully found a BOLA vulnerability.
+- We can confirm that we've found private info because `"public": false`:
+
+```
+{
+  "data": {
+    "paste": {
+      "owner": {
+        "id": "T3duZXJPYmp1Y3Q6MQ=="
+      },
+      "burn": false,
+      "Owner": {
+        "id": "T3duZXJPYmp1Y3Q6MQ=="
+      },
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Firefox/78.0",
+      "pId": "63",
+      "title": "Imported Paste from URL - b9ae5f",
+      "ownerId": 1,
+      "content": "<!DOCTYPE html>\n<html lang=en ",
+      "ipAddr": "192.168.195.133",
+      "public": false,
+      "id": "UGFzdGVPYmp1Y3Q6NjM="
+    }
+  }
+}
+```
+
+- With this we're able to retrieve every private paste by requesting different pIDs.
+
+### Fuzzing for Command Injection
+
+- Now that we've analyzed the API, let's fuzz it for vulnerabilities to see if we can conduct an attack.
+- Fuzzing GraphQL can pose an additional challenge, as most requests result in a 200 status code, even if they were formatted incorrectly.
+- You'll find any errors in the body, and you'll need to build a baseline for what these look like by reviewing the responses.
+  - Check whether errors all generate the same response length, for example, or if there are other significant differences between a successful response and a failed one.
+  - Review error responses for information disclosures that can aid the attack.
+- Since query type is read-only, we'll attack the mutation request types.
+- First, let's take one of the mutation requests, such as the `Mutation ImportPaste` request in the DVGA collection we've created and intercept it with Burp.
+- Send this request to Repeater to see the sort of response we should expect to see:
+
+```
+HTTP/1.0 200 OK
+Content-Type: application/json
+
+{"data":{"importPaste":{
+"result":"<HTML><HEAD><meta http-equiv=\"content-type\"content=\"text/html;charset=utf-8\">\n<TITLE>301 Moved</TITLE></HEAD><BODY>\n<H1>\nThe document has moved\n<AHREF=\"http://www.google.com/\">here</A>.\n</BODY></HTML>\n"}}}
+```
+
+- The author tested the request by using *http://www.google.com/* as his URL for importing pastes; you can use a different URL in the request.
+- Forward the request to Intruder and take a look at the body of the request:
+
+```
+{"query":"mutation ImportPaste ($host: String!, $port: Int!, $path: String!, $scheme: String!)
+{\n         importPaste(host: $host, port: $port, path: $path, scheme: $scheme) {\n
+result\n      }\n     }", "variable":{"host":"google.com","port":80,"path":"/","scheme":"http"}}
+```
+
+- Notice that this request contains variables, each of which is preceded by $ and followed by !.
+- The corresponding keys and values are at the bottom of the request, following `"variables"`.
+- You can place payload positions here, because these values contain user input that could be passed to backend processes, making them an ideal target for fuzzing.
+- If any of these variables lack good input validation controls, we'll be able to detect a vulnerability and potentially exploit the weakness.
+- Ex. Payload positions:
+  `"variable":{"host":"google.com§test§§test2§","port":80,"path":"/","scheme":"http"}}`
+- With the two payload positions set, use a list of metacharacters like these:
+  |
+  ||
+  &
+  &&
+  '
+  "
+  ;
+  '"
+- For the second payload position set some potential injection payloads:
+  whoami
+  {"$where": "sleep(1000) "}
+  ;%00
+  \-- -
+- Make sure payload encoding is disabled and run the attack against the host variable.
+- Review the responses to see what they consisted of.
+- Next, run the attack against a different variable like "path":
+  `"variables":{host":"google.com","port":80,"path":"/§test§§test2§","scheme":"http"}}`
+- Use the same payloads as the first attack and run that bad boy.
+- This time the responses vary in response codes and lengths and there are indicators of a successful code execution.
+- Digging through the responses, you can see that serveral of them were suceptible to the `whoami` command.
+  - This suggests that the "path" variable is culnerable to operating system injection.
+  - In addition, the user that is returned is the `root` user, which indicates that the system is running linux. BINGO!
+  - You could run another attack with the command as `uname -a` and `ver` to see which operating system you are interacting with.
+- Once you'd discovered what kind of operating system you're interacting with, you can perform more targeted attacks to obtain sensitive information from the system.
+- This would be a very easy full compromise by sending a reverse shell payload to the vulnerable `"path":` variable. If this attack succeeds, you would have full control over their system.
