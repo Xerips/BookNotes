@@ -4266,3 +4266,72 @@ result\n      }\n     }", "variable":{"host":"google.com","port":80,"path":"/","
   - You could run another attack with the command as `uname -a` and `ver` to see which operating system you are interacting with.
 - Once you'd discovered what kind of operating system you're interacting with, you can perform more targeted attacks to obtain sensitive information from the system.
 - This would be a very easy full compromise by sending a reverse shell payload to the vulnerable `"path":` variable. If this attack succeeds, you would have full control over their system.
+
+## Resources:
+
+### Chapter 3: Common API Vulnerabilities
+
+- [Why APIs Are Your Biggest Security Risk](https://apisec.ai/blog/why-apis-are-your-biggest-security-risk)
+- [OWASP API Security Project](https://owasp.org/www-project-api-security)
+- [OWASP API Security Top 10](https://apisecurity.io/encyclopedia/content/owasp/owasp-api-security-top-10)
+- [Introduction to API Security Landscape](https://lp.traceable.ai/webinars/html?commid=47702)
+
+### Chapter 4: Your API Hacking System
+
+- ["Introduction" Postman Learning Center](https://learning.postman.com/docs/getting-started/introduction)
+- [Web Security Academy - PortSwigger](https://portswigger.net/web-security)
+
+### Chapter 5: Setting Up Vulnerable API Targets
+
+- [Web Application Pentest Lab Setup on AWS](https://www.hackingarticle.in/web-application-pentest-lab-on-aws)
+- [Tutorial: Setting Up a Virtual Pentesting Lab at Home](https://cybrary.it/blog/0p3n/tutorial-for-setting-up-a-virtual-penetration-testing-lab-at-your-home)
+- [OccupyTheWeb "How to Create a Virtual Hacking Lab"](https://null-byte.wonderhowto.com/how-to/how-to-back-like-pro-create-virtual-hacking-lab-0157333)
+- [Webcast: How to Build a Home Lab](https://www.blackhillsinfosec.com/webcast-how-to-build-a-home-lab)
+
+### Chapter 6: Discovery
+
+- [API Directory](https://programmableweb.com/apis/directory)
+- [API Discovery: 15 Ways to Find APIs](https://nordicapis.com/api-discovery-15-ways-to-find-apis)
+- [Welcome to the RapidAPI Hub](https://rapidapi/hub)
+
+### Chapter 7: Endpoint Analysis
+
+- [5 Examples of Excellent API Documentation (and Why We Think So)](https://nordicapis/5-examples-of-excellent-api-documentation)
+- [AP13: 2019 Excessive Data Exposure](https://salt.security/blog/api3-2019-excessive-data-exposure)
+- [How to Use an API: Just the Basics](https://technologyadvice/blog/information-technology/how-to-use-an-api)
+
+### Chapter 8: Attacking Authentication
+
+- [Hacking JWT Tokens: SQLi in JWT](https://blog.pentesteracademy.com/hacking-jwt-tokens-sqli-in-jwt-7fec22adbf7d)
+- [API Security Testing: How to Hack an API and Get Away with It](https://smartbear.com/blog/api-security-testing-how-to-hack-an-api-part-1)
+
+### Chapter 9: Fuzzing
+
+- [OWASP "Fuzzing"](https://owasp.org/www-community/Fuzzing)
+
+### Chapter 10: Exploiting Authorization
+
+- [A Deep Dive on the Most Critical API Vulnerability -- BOLA (Broken Object Level Authorization)](https://inonst.medium.com)
+
+### Chapter 11: Mass Assignment
+
+- [Mass Assignment Cheat Sheet - OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html)
+
+### Chapter 12: Injection
+
+- [NoSQL Injection Cheatsheet](https://nullsweep.com/nosql-injection-cheatsheet)
+- [SQL Injection - PortSwigger](https://portswigger.net/web-security/sql-injection)
+- [XAS: Cross-API Scripting Attacks in Social Ecosystems](https://doi.org/10.1007/s11432-014-5145-1)
+
+### Chapter 13: Applying Evasive Techniques and Rate Limit Testing
+
+- [How to Bypass WAD HackenProof Cheat Sheet](https://hacken.io/researches-and-investigations/how-to-bypass-waf-hackenproof-cheat-sheet)
+- [Everything You Need to Know About API Rate Limiting](https://nordicapis.com/everything-you-need-to-know-about-api-rate-limiting)
+
+### 14: Attacking GraphQL
+
+- [How to Exploit GraphQL Endpoints: Introspection, Query, Mutations & Tools](https://blog.yeswehack.com/yeswerhackers/how-exploit-graphql-endpoint-bug-bounty)
+- [Exploiting GraphGL](https://blog.assetnote.io/2021/08/29/exploiting-graphql)
+- [That Single GraphQL Issue That You Keep Missing](https://blog.doyensec.com/2021/05/20/graphql-csrf.html)
+
+The End.
